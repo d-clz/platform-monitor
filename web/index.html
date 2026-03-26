@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Platform CI Monitor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: ui-monospace, "Cascadia Code", "Source Code Pro", monospace;
+      background: #0f172a;
+      color: #e2e8f0;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ---- Layout ---- */
+    header {
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 { font-size: 16px; font-weight: 600; letter-spacing: 0.05em; color: #f1f5f9; }
+    #last-updated { font-size: 12px; color: #94a3b8; }
+
+    main { padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+    /* ---- Summary bar ---- */
+    #summary {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .tile {
+      flex: 1;
+      min-width: 100px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 14px 16px;
+      text-align: center;
+    }
+    .tile .count { font-size: 28px; font-weight: 700; line-height: 1; }
+    .tile .label { font-size: 11px; color: #94a3b8; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.08em; }
+    .tile.ok    .count { color: #4ade80; }
+    .tile.warn  .count { color: #fbbf24; }
+    .tile.crit  .count { color: #f87171; }
+    .tile.err   .count { color: #c084fc; }
+    .tile.total .count { color: #f1f5f9; }
+
+    /* ---- Apps table ---- */
+    section { margin-bottom: 32px; }
+    section h2 { font-size: 13px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+
+    .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #334155; }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      background: #1e293b;
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 11px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-bottom: 1px solid #334155;
+      white-space: nowrap;
+    }
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid #1e293b;
+      vertical-align: top;
+      white-space: nowrap;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #1e2d42; }
+
+    /* ---- Level badges ---- */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .badge.ok       { background: #14532d; color: #4ade80; }
+    .badge.warning  { background: #451a03; color: #fbbf24; }
+    .badge.critical { background: #450a0a; color: #f87171; }
+    .badge.error    { background: #2e1065; color: #c084fc; }
+
+    /* ---- SA / token cells ---- */
+    .sa-status { display: flex; gap: 6px; flex-wrap: wrap; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+    }
+    .pill.present { background: #14532d; color: #4ade80; }
+    .pill.missing { background: #450a0a; color: #f87171; }
+    .pill.warn    { background: #451a03; color: #fbbf24; }
+
+    .ns-list { display: flex; gap: 4px; flex-wrap: wrap; max-width: 220px; }
+    .ns-tag {
+      background: #1e3a5f;
+      color: #93c5fd;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+
+    .issues-list { color: #fbbf24; font-size: 12px; white-space: normal; max-width: 300px; }
+    .issues-list li { margin-left: 16px; }
+
+    /* ---- Pipeline cell ---- */
+    .pipeline-link { color: #93c5fd; text-decoration: none; }
+    .pipeline-link:hover { text-decoration: underline; }
+
+    /* ---- History panel ---- */
+    #history-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+    .hist-entry {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 10px 14px;
+    }
+    .hist-entry .hist-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+    .hist-entry .hist-ts { font-size: 12px; color: #94a3b8; }
+    .hist-alerts { font-size: 12px; color: #cbd5e1; padding-left: 12px; }
+    .hist-alerts li { margin-bottom: 2px; }
+
+    /* ---- Empty / error states ---- */
+    .empty { color: #475569; font-style: italic; padding: 24px 0; text-align: center; }
+    #error-banner {
+      display: none;
+      background: #450a0a;
+      color: #fca5a5;
+      padding: 10px 16px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Platform CI Monitor</h1>
+    <span id="last-updated">—</span>
+  </header>
+
+  <main>
+    <div id="error-banner"></div>
+
+    <div id="summary">
+      <div class="tile total"><div class="count" id="cnt-total">—</div><div class="label">Total</div></div>
+      <div class="tile ok">  <div class="count" id="cnt-ok">—</div>   <div class="label">OK</div></div>
+      <div class="tile warn"><div class="count" id="cnt-warn">—</div> <div class="label">Warning</div></div>
+      <div class="tile crit"><div class="count" id="cnt-crit">—</div> <div class="label">Critical</div></div>
+      <div class="tile err"> <div class="count" id="cnt-err">—</div>  <div class="label">Error</div></div>
+    </div>
+
+    <section>
+      <h2>Applications</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>App</th>
+              <th>Level</th>
+              <th>Source</th>
+              <th>Service Accounts</th>
+              <th>Tokens</th>
+              <th>Namespaces</th>
+              <th>Pipeline</th>
+              <th>Failed Jobs (24h)</th>
+              <th>Runners</th>
+              <th>Issues</th>
+            </tr>
+          </thead>
+          <tbody id="app-tbody">
+            <tr><td colspan="10" class="empty">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Alert History</h2>
+      <ul id="history-list">
+        <li class="empty">Loading…</li>
+      </ul>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

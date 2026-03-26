@@ -1,0 +1,36 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ci-monitor-sa
+  namespace: platform-cicd
+---
+# ClusterRole grants list access to the resources the OCP checker needs.
+# Secrets are listed for token creationTimestamp only; no secret data is consumed.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ci-monitor-reader
+rules:
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["list"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["list"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["rolebindings"]
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ci-monitor-reader-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ci-monitor-reader
+subjects:
+  - kind: ServiceAccount
+    name: ci-monitor-sa
+    namespace: platform-cicd

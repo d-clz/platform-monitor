@@ -1,0 +1,59 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ci-monitor
+  namespace: platform-cicd
+spec:
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: ci-monitor-sa
+          restartPolicy: OnFailure
+          containers:
+            - name: monitor
+              image: image-registry.openshift-image-registry.svc:5000/platform-cicd/platform-monitor:latest
+              command: ["/monitor"]
+              env:
+                - name: CONFIG_PATH
+                  value: /etc/ci-monitor/config.yaml
+                - name: DATA_DIR
+                  value: /data
+                - name: KUBE_API_URL
+                  value: https://kubernetes.default.svc
+                - name: KUBE_TOKEN_PATH
+                  value: /var/run/secrets/kubernetes.io/serviceaccount/token
+                - name: GITLAB_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: ci-monitor-secrets
+                      key: GITLAB_TOKEN
+                - name: SMTP_USERNAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: ci-monitor-secrets
+                      key: SMTP_USERNAME
+                      optional: true
+                - name: SMTP_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: ci-monitor-secrets
+                      key: SMTP_PASSWORD
+                      optional: true
+              volumeMounts:
+                - name: config
+                  mountPath: /etc/ci-monitor
+                  readOnly: true
+                - name: data
+                  mountPath: /data
+          volumes:
+            - name: config
+              configMap:
+                name: ci-monitor-config
+            - name: data
+              persistentVolumeClaim:
+                claimName: ci-monitor-data

@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ci-dashboard
+  namespace: platform-cicd
+  labels:
+    app: ci-dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ci-dashboard
+  template:
+    metadata:
+      labels:
+        app: ci-dashboard
+    spec:
+      containers:
+        - name: dashboard
+          image: image-registry.openshift-image-registry.svc:5000/platform-cicd/platform-monitor:latest
+          command: ["/dashboard"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: WEB_DIR
+              value: /web
+            - name: DATA_DIR
+              value: /data
+            - name: PORT
+              value: "8080"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: ci-monitor-data
