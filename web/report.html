@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Platform CI — Report</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: ui-monospace, "Cascadia Code", "Source Code Pro", monospace;
+      background: #0f172a;
+      color: #e2e8f0;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ---- Header / Nav ---- */
+    header {
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 { font-size: 16px; font-weight: 600; letter-spacing: 0.05em; color: #f1f5f9; }
+    #range-info { font-size: 12px; color: #94a3b8; }
+
+    #nav { display: flex; gap: 4px; }
+    .nav-link {
+      color: #64748b;
+      text-decoration: none;
+      font-size: 12px;
+      padding: 4px 12px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+    }
+    .nav-link:hover { color: #94a3b8; }
+    .nav-link.active { color: #f1f5f9; border-color: #334155; background: #0f172a; }
+
+    /* ---- Layout ---- */
+    main { padding: 28px 40px 40px; }
+
+    /* ---- Controls ---- */
+    #controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .ctrl-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; }
+    .btn-group { display: flex; gap: 4px; }
+    .range-btn {
+      background: none;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #64748b;
+      font-family: inherit;
+      font-size: 12px;
+      padding: 4px 12px;
+      cursor: pointer;
+    }
+    .range-btn:hover { color: #94a3b8; border-color: #475569; }
+    .range-btn.active { color: #f1f5f9; border-color: #3b82f6; background: #1e3a5f; }
+
+    #app-select, .app-select-inline {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-family: inherit;
+      font-size: 12px;
+      padding: 4px 10px;
+      cursor: pointer;
+      outline: none;
+    }
+    #app-select:focus { border-color: #3b82f6; }
+
+    /* ---- Section headings ---- */
+    section { margin-bottom: 32px; }
+    section h2 { font-size: 13px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+
+    /* ---- Summary table ---- */
+    .table-wrap { border-radius: 8px; border: 1px solid #334155; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      background: #1e293b;
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 11px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-bottom: 1px solid #334155;
+      white-space: nowrap;
+    }
+    td { padding: 10px 14px; border-bottom: 1px solid #1e293b; white-space: nowrap; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #1e2d42; cursor: pointer; }
+    tr.selected td { background: #1e2d42; }
+    tr.selected td:first-child { border-left: 3px solid #3b82f6; padding-left: 11px; }
+
+    .err-rate { font-weight: 600; }
+    .err-high  { color: #f87171; }
+    .err-mid   { color: #fbbf24; }
+    .err-low   { color: #4ade80; }
+
+    /* ---- Charts ---- */
+    #charts { display: flex; flex-direction: column; gap: 20px; }
+    .chart-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .chart-title { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+    canvas { display: block; width: 100%; height: 180px; }
+
+    /* ---- Empty / error ---- */
+    .empty { color: #475569; font-style: italic; padding: 24px 0; text-align: center; }
+    #error-banner {
+      display: none;
+      background: #450a0a;
+      color: #fca5a5;
+      padding: 10px 16px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Platform CI Monitor</h1>
+    <nav id="nav">
+      <a href="/" class="nav-link">Dashboard</a>
+      <a href="/report" class="nav-link active">Report</a>
+    </nav>
+    <span id="range-info">—</span>
+  </header>
+
+  <main>
+    <div id="error-banner"></div>
+
+    <div id="controls">
+      <span class="ctrl-label">Range</span>
+      <div class="btn-group">
+        <button class="range-btn" data-days="7">7d</button>
+        <button class="range-btn active" data-days="30">30d</button>
+        <button class="range-btn" data-days="90">90d</button>
+        <button class="range-btn" data-days="365">1y</button>
+      </div>
+      <span class="ctrl-label">App</span>
+      <select id="app-select"><option value="">Loading…</option></select>
+    </div>
+
+    <section>
+      <h2>Summary</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>App</th>
+              <th>Runs</th>
+              <th>Error Rate</th>
+              <th>Avg Duration</th>
+              <th>Avg Runners</th>
+            </tr>
+          </thead>
+          <tbody id="summary-tbody">
+            <tr><td colspan="5" class="empty">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="job-section" style="display:none">
+      <h2>Jobs — <span id="job-app-name"></span></h2>
+      <div id="controls" style="margin-bottom:16px">
+        <span class="ctrl-label">Job</span>
+        <select id="job-select" class="app-select-inline">
+          <option value="">—</option>
+        </select>
+      </div>
+      <div id="job-charts">
+        <div class="chart-card">
+          <div class="chart-title">Job Error Rate (%) — weekly</div>
+          <canvas id="chart-job-error"></canvas>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Job Avg Duration — weekly</div>
+          <canvas id="chart-job-duration"></canvas>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Pipeline Runs — weekly</div>
+          <canvas id="chart-job-runs"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <section id="charts-section" style="display:none">
+      <h2 id="charts-title">Charts</h2>
+      <div id="charts">
+        <div class="chart-card">
+          <div class="chart-title">Pipeline Error Rate (%)</div>
+          <canvas id="chart-error"></canvas>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Avg Pipeline Duration</div>
+          <canvas id="chart-duration"></canvas>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Runners Online</div>
+          <canvas id="chart-runners"></canvas>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="report.js"></script>
+</body>
+</html>

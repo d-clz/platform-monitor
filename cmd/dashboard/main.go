@@ -123,8 +123,13 @@ func main() {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	// GET /data/* — serve results.json, incidents.json from the data directory.
+	// GET /data/* — serve results.json, incidents.json, metrics*.json from the data directory.
 	mux.Handle("/data/", http.StripPrefix("/data/", http.FileServer(http.Dir(dataDir))))
+
+	// GET /report — serve the long-term report SPA.
+	mux.HandleFunc("GET /report", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, filepath.Join(webDir, "report.html"))
+	})
 
 	// GET /* — serve static dashboard assets.
 	mux.Handle("/", http.FileServer(http.Dir(webDir)))

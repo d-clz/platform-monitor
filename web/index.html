@@ -27,6 +27,19 @@
     header h1 { font-size: 16px; font-weight: 600; letter-spacing: 0.05em; color: #f1f5f9; }
     #last-updated { font-size: 12px; color: #94a3b8; }
 
+    /* ---- Nav ---- */
+    #nav { display: flex; gap: 4px; }
+    .nav-link {
+      color: #64748b;
+      text-decoration: none;
+      font-size: 12px;
+      padding: 4px 12px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+    }
+    .nav-link:hover { color: #94a3b8; }
+    .nav-link.active { color: #f1f5f9; border-color: #334155; background: #0f172a; }
+
     main { padding: 28px 40px 40px; }
 
     /* ---- Summary bar ---- */
@@ -314,6 +327,49 @@
     }
     .note-toggle-btn:hover { border-color: #475569; color: #94a3b8; }
 
+    /* ---- Job expand row ---- */
+    .row-toggle {
+      display: inline-block;
+      width: 10px;
+      margin-right: 6px;
+      font-size: 10px;
+      color: #475569;
+      cursor: pointer;
+      user-select: none;
+      transition: color 0.1s;
+    }
+    tr:hover .row-toggle { color: #94a3b8; }
+
+    .job-expand-row > td {
+      background: #0a1120;
+      padding: 0;
+      border-bottom: 1px solid #1e293b;
+    }
+    .job-expand-wrap { padding: 8px 16px 14px 48px; }
+
+    .job-table { border-collapse: collapse; }
+    .job-table th {
+      padding: 4px 14px;
+      font-size: 10px;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-bottom: 1px solid #1e293b;
+      text-align: left;
+      white-space: nowrap;
+    }
+    .job-table td { padding: 4px 14px; font-size: 12px; vertical-align: middle; white-space: nowrap; }
+    .job-table tr:hover td { background: #0f1a2e; }
+    .job-dur { color: #64748b; }
+    .job-stage { color: #475569; }
+
+    .badge.running { background: #0c2340; color: #93c5fd; }
+    .badge.skipped { background: #1e293b; color: #475569; }
+    .badge.pending, .badge.created { background: #1c1a03; color: #fde68a; }
+    .badge.canceled { background: #451a03; color: #fbbf24; }
+
+    .job-empty { font-size: 12px; color: #475569; font-style: italic; }
+
     /* ---- Empty / error states ---- */
     .empty { color: #475569; font-style: italic; padding: 24px 0; text-align: center; }
     #error-banner {
@@ -330,6 +386,10 @@
 <body>
   <header>
     <h1>Platform CI Monitor</h1>
+    <nav id="nav">
+      <a href="/" class="nav-link active">Dashboard</a>
+      <a href="/report" class="nav-link">Report</a>
+    </nav>
     <span id="last-updated">—</span>
   </header>
 

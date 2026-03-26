@@ -1,0 +1,70 @@
+[
+  {"week":"2026-W11","app":"pfm","job":"lint",       "stage":"lint",   "runs":3,"failures":0,"totalDuration":45.6},
+  {"week":"2026-W11","app":"pfm","job":"test-unit",  "stage":"test",   "runs":3,"failures":0,"totalDuration":411.0},
+  {"week":"2026-W11","app":"pfm","job":"build-image","stage":"build",  "runs":3,"failures":0,"totalDuration":462.0},
+  {"week":"2026-W11","app":"pfm","job":"push-image", "stage":"build",  "runs":3,"failures":0,"totalDuration":126.0},
+  {"week":"2026-W11","app":"pfm","job":"deploy-sit", "stage":"deploy", "runs":3,"failures":0,"totalDuration":207.0},
+
+  {"week":"2026-W11","app":"crm","job":"lint",             "stage":"lint",   "runs":2,"failures":0,"totalDuration":38.4},
+  {"week":"2026-W11","app":"crm","job":"test-unit",        "stage":"test",   "runs":2,"failures":0,"totalDuration":356.0},
+  {"week":"2026-W11","app":"crm","job":"test-integration", "stage":"test",   "runs":2,"failures":0,"totalDuration":520.0},
+  {"week":"2026-W11","app":"crm","job":"build-image",      "stage":"build",  "runs":2,"failures":0,"totalDuration":410.0},
+  {"week":"2026-W11","app":"crm","job":"deploy-sit",       "stage":"deploy", "runs":2,"failures":0,"totalDuration":184.0},
+
+  {"week":"2026-W11","app":"hrm","job":"lint",      "stage":"lint",  "runs":2,"failures":0,"totalDuration":32.0},
+  {"week":"2026-W11","app":"hrm","job":"test",      "stage":"test",  "runs":2,"failures":0,"totalDuration":228.0},
+  {"week":"2026-W11","app":"hrm","job":"build",     "stage":"build", "runs":2,"failures":0,"totalDuration":384.0},
+  {"week":"2026-W11","app":"hrm","job":"push",      "stage":"build", "runs":2,"failures":0,"totalDuration":98.0},
+
+  {"week":"2026-W11","app":"fin","job":"lint",       "stage":"lint",   "runs":2,"failures":0,"totalDuration":41.0},
+  {"week":"2026-W11","app":"fin","job":"test-unit",  "stage":"test",   "runs":2,"failures":0,"totalDuration":398.0},
+  {"week":"2026-W11","app":"fin","job":"build-image","stage":"build",  "runs":2,"failures":0,"totalDuration":448.0},
+  {"week":"2026-W11","app":"fin","job":"push-image", "stage":"build",  "runs":2,"failures":0,"totalDuration":118.0},
+  {"week":"2026-W11","app":"fin","job":"deploy",     "stage":"deploy", "runs":2,"failures":0,"totalDuration":196.0},
+
+  {"week":"2026-W12","app":"pfm","job":"lint",       "stage":"lint",   "runs":4,"failures":0,"totalDuration":58.0},
+  {"week":"2026-W12","app":"pfm","job":"test-unit",  "stage":"test",   "runs":4,"failures":0,"totalDuration":548.0},
+  {"week":"2026-W12","app":"pfm","job":"build-image","stage":"build",  "runs":4,"failures":0,"totalDuration":604.0},
+  {"week":"2026-W12","app":"pfm","job":"push-image", "stage":"build",  "runs":4,"failures":0,"totalDuration":168.0},
+  {"week":"2026-W12","app":"pfm","job":"deploy-sit", "stage":"deploy", "runs":4,"failures":0,"totalDuration":276.0},
+
+  {"week":"2026-W12","app":"crm","job":"lint",             "stage":"lint",   "runs":3,"failures":0,"totalDuration":52.2},
+  {"week":"2026-W12","app":"crm","job":"test-unit",        "stage":"test",   "runs":3,"failures":0,"totalDuration":531.0},
+  {"week":"2026-W12","app":"crm","job":"test-integration", "stage":"test",   "runs":3,"failures":2,"totalDuration":381.0},
+  {"week":"2026-W12","app":"crm","job":"build-image",      "stage":"build",  "runs":1,"failures":0,"totalDuration":205.0},
+  {"week":"2026-W12","app":"crm","job":"deploy-sit",       "stage":"deploy", "runs":1,"failures":0,"totalDuration":96.0},
+
+  {"week":"2026-W12","app":"hrm","job":"lint",  "stage":"lint",  "runs":3,"failures":0,"totalDuration":48.0},
+  {"week":"2026-W12","app":"hrm","job":"test",  "stage":"test",  "runs":3,"failures":0,"totalDuration":342.0},
+  {"week":"2026-W12","app":"hrm","job":"build", "stage":"build", "runs":3,"failures":0,"totalDuration":576.0},
+  {"week":"2026-W12","app":"hrm","job":"push",  "stage":"build", "runs":3,"failures":0,"totalDuration":147.0},
+
+  {"week":"2026-W12","app":"fin","job":"lint",       "stage":"lint",   "runs":3,"failures":0,"totalDuration":58.5},
+  {"week":"2026-W12","app":"fin","job":"test-unit",  "stage":"test",   "runs":3,"failures":1,"totalDuration":320.0},
+  {"week":"2026-W12","app":"fin","job":"build-image","stage":"build",  "runs":2,"failures":1,"totalDuration":290.0},
+  {"week":"2026-W12","app":"fin","job":"push-image", "stage":"build",  "runs":1,"failures":0,"totalDuration":62.0},
+  {"week":"2026-W12","app":"fin","job":"deploy",     "stage":"deploy", "runs":1,"failures":1,"totalDuration":28.0},
+
+  {"week":"2026-W13","app":"pfm","job":"lint",       "stage":"lint",   "runs":2,"failures":0,"totalDuration":29.4},
+  {"week":"2026-W13","app":"pfm","job":"test-unit",  "stage":"test",   "runs":2,"failures":0,"totalDuration":278.0},
+  {"week":"2026-W13","app":"pfm","job":"build-image","stage":"build",  "runs":2,"failures":0,"totalDuration":306.0},
+  {"week":"2026-W13","app":"pfm","job":"push-image", "stage":"build",  "runs":2,"failures":0,"totalDuration":84.0},
+  {"week":"2026-W13","app":"pfm","job":"deploy-sit", "stage":"deploy", "runs":2,"failures":0,"totalDuration":138.0},
+
+  {"week":"2026-W13","app":"crm","job":"lint",             "stage":"lint",   "runs":2,"failures":0,"totalDuration":34.8},
+  {"week":"2026-W13","app":"crm","job":"test-unit",        "stage":"test",   "runs":2,"failures":0,"totalDuration":358.0},
+  {"week":"2026-W13","app":"crm","job":"test-integration", "stage":"test",   "runs":2,"failures":0,"totalDuration":496.0},
+  {"week":"2026-W13","app":"crm","job":"build-image",      "stage":"build",  "runs":2,"failures":0,"totalDuration":412.0},
+  {"week":"2026-W13","app":"crm","job":"deploy-sit",       "stage":"deploy", "runs":2,"failures":0,"totalDuration":188.0},
+
+  {"week":"2026-W13","app":"hrm","job":"lint",  "stage":"lint",  "runs":1,"failures":0,"totalDuration":16.2},
+  {"week":"2026-W13","app":"hrm","job":"test",  "stage":"test",  "runs":1,"failures":0,"totalDuration":114.0},
+  {"week":"2026-W13","app":"hrm","job":"build", "stage":"build", "runs":1,"failures":0,"totalDuration":192.0},
+  {"week":"2026-W13","app":"hrm","job":"push",  "stage":"build", "runs":1,"failures":0,"totalDuration":49.0},
+
+  {"week":"2026-W13","app":"fin","job":"lint",       "stage":"lint",   "runs":2,"failures":0,"totalDuration":39.0},
+  {"week":"2026-W13","app":"fin","job":"test-unit",  "stage":"test",   "runs":2,"failures":1,"totalDuration":148.0},
+  {"week":"2026-W13","app":"fin","job":"build-image","stage":"build",  "runs":2,"failures":2,"totalDuration":63.0},
+  {"week":"2026-W13","app":"fin","job":"push-image", "stage":"build",  "runs":0,"failures":0,"totalDuration":0},
+  {"week":"2026-W13","app":"fin","job":"deploy",     "stage":"deploy", "runs":0,"failures":0,"totalDuration":0}
+]

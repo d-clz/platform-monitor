@@ -1,7 +1,7 @@
 # Platform CI Monitor
 
 A monitoring system for the Platform CI pipeline running on OpenShift (OCP).
-Checks health across OCP cluster resources and a self-hosted GitLab instance, then presents results on a live dashboard with incident tracking and optional email alerts.
+Checks health across OCP cluster resources and a self-hosted GitLab instance, then presents results on a live dashboard with incident tracking, long-term reporting, and optional email alerts.
 
 ---
 
@@ -20,10 +20,11 @@ go mod download
 WEB_DIR=./web DATA_DIR=./testdata go run ./cmd/dashboard
 
 # 4. Open in browser
-open http://localhost:8080
+open http://localhost:8080        # dashboard
+open http://localhost:8080/report # long-term report
 ```
 
-The mock data in `testdata/` covers every app state (ok, warning, critical, error, ocp-only, gitlab-only) and a set of incidents in various lifecycle stages so you can explore the full dashboard immediately.
+The mock data in `testdata/` covers every app state (ok, warning, critical, error, ocp-only, gitlab-only), incidents in various lifecycle stages, and 3 weeks of per-app and per-job metrics so you can explore all views immediately.
 
 ---
 
@@ -87,7 +88,7 @@ apps:
 
 | Variable | Default | Description |
 |---|---|---|
-| `WEB_DIR` | `/web` | Directory containing `index.html` and `app.js` |
+| `WEB_DIR` | `/web` | Directory containing `index.html`, `app.js`, `report.html`, `report.js` |
 | `DATA_DIR` | `/data` | Directory containing data files (PVC mount) |
 | `HOST` | `0.0.0.0` | Interface to bind to |
 | `PORT` | `8080` | HTTP port to listen on |
@@ -101,9 +102,14 @@ All files are written to `DATA_DIR` (PVC in OCP, `./testdata` locally).
 
 | File | Written by | Description |
 |---|---|---|
-| `results.json` | Monitor (CronJob) | Latest health snapshot — overwritten every run |
-| `history.json` | Monitor (CronJob) | Compact alert log — appended when non-OK apps exist, capped at 200 entries |
-| `incidents.json` | Monitor (CronJob) + Dashboard | Full incident lifecycle — opened/closed automatically, notes added via UI |
+| `results.json` | Monitor | Latest health snapshot — overwritten every run |
+| `history.json` | Monitor | Compact alert log — appended when non-OK apps exist, capped at 200 entries |
+| `incidents.json` | Monitor + Dashboard | Full incident lifecycle — opened/closed automatically, notes added via UI |
+| `metrics.json` | Monitor | Hot metrics: per-app time-series for last 60 days, appended every run |
+| `metrics-YYYY-MM.json` | Monitor | Cold metrics: monthly archives, rotated out of the hot file automatically |
+| `metrics-index.json` | Monitor | List of cold metric archive files |
+| `job-metrics.json` | Monitor | Weekly per-job aggregates: runs, failures, total duration — capped at 52 weeks |
+| `job-metrics-state.json` | Monitor | Last-seen pipeline ID per app (prevents double-counting across cron polls) |
 | `dashboard.log` | Dashboard | Server log (when `LOG_FILE` is set) |
 
 ---
@@ -145,6 +151,42 @@ Root cause: deployer SA token expired after 94 days — never rotated.
 Fix: rotated token, updated OCP_SVC_KUBECONFIG in GitLab CI variables.
 Lesson: add a 50-day calendar reminder for all CI token rotations.
 ```
+
+---
+
+## Pipeline job details
+
+On the dashboard, click any app name (▶) to expand an inline job breakdown showing every job in the latest pipeline — name, stage, status badge, and duration.
+
+---
+
+## Long-term report (`/report`)
+
+The report page provides trend analysis over selectable time ranges (7d / 30d / 90d / 1y).
+
+### App-level charts
+
+Select an app to see daily trends for:
+- **Pipeline error rate** — percentage of cron samples where the last pipeline was failed or canceled
+- **Avg pipeline duration** — mean duration in seconds per day
+- **Runners online** — mean non-stale runner count per day
+
+### Job-level charts
+
+Select an app, then select a job to see weekly trends for:
+- **Job error rate** — percentage of pipeline runs where the job failed or was canceled
+- **Job avg duration** — mean job duration in seconds per week
+- **Pipeline runs** — distinct pipeline runs counted per week (each pipeline counted once, deduped by ID)
+
+### Data architecture
+
+| Layer | File | Retention |
+|---|---|---|
+| Hot (app metrics) | `metrics.json` | Rolling 60 days |
+| Cold (app metrics) | `metrics-YYYY-MM.json` | Monthly archives, 1 year+ |
+| Job metrics | `job-metrics.json` | Rolling 52 weeks (no cold rotation needed) |
+
+The report page loads only the files needed for the selected range — cold archives are fetched lazily when the range exceeds the 60-day hot window.
 
 ---
 
@@ -202,26 +244,34 @@ oc logs -f job/ci-monitor-manual -n platform-cicd
 platform-monitor/
 ├── cmd/
 │   ├── monitor/main.go          # CronJob entrypoint
-│   └── dashboard/main.go        # File server + notes API (POST/PUT/DELETE /notes)
+│   └── dashboard/main.go        # File server + notes API (POST/PUT/DELETE /notes) + /report route
 ├── internal/
 │   ├── config/                  # YAML config loader
 │   ├── checker/
 │   │   ├── ocp.go               # OCP auto-discovery checker
-│   │   └── gitlab.go            # GitLab REST API checker
+│   │   └── gitlab.go            # GitLab REST API checker (pipelines, jobs, runners)
 │   ├── evaluator/               # Threshold logic, app merge
 │   ├── reporter/
-│   │   ├── reporter.go          # Writes results.json + history.json
-│   │   └── incident.go          # Incident lifecycle + note CRUD
+│   │   ├── reporter.go          # Writes results.json + history.json, orchestrates all writers
+│   │   ├── incident.go          # Incident lifecycle + note CRUD
+│   │   ├── metrics.go           # App-level time-series metrics, hot/cold rotation
+│   │   └── jobmetrics.go        # Per-job weekly aggregates, pipeline dedup
 │   └── alerter/                 # Email sender (flag-gated)
 ├── web/
 │   ├── index.html               # Dashboard SPA
-│   └── app.js                   # Fetch + render results and incidents
+│   ├── app.js                   # Fetch + render results, incidents, expandable job rows
+│   ├── report.html              # Long-term report SPA
+│   └── report.js                # Metrics/job loading, canvas charts, hot+cold fetch
 ├── deploy/                      # OpenShift manifests
-├── testdata/                    # Mock data for local dashboard testing
+├── testdata/                    # Mock data for local testing
 │   ├── results.json
 │   ├── incidents.json
-│   └── history.json
-├── .github/workflows/ci.yml     # GitHub Actions CI
+│   ├── history.json
+│   ├── metrics.json             # 7 days of app-level time-series
+│   ├── metrics-index.json       # Empty — no cold archives in testdata
+│   ├── job-metrics.json         # 3 weeks of per-job weekly aggregates
+│   └── job-metrics-state.json   # Last-seen pipeline IDs
+├── .github/workflows/ci.yml     # CI: test on push/PR, build+release on tags only
 ├── Dockerfile
 └── go.mod
 ```
@@ -234,19 +284,26 @@ platform-monitor/
 CronJob (every 15 min)
   │
   ├── OCPChecker    → auto-discovers SAs, tokens, rolebindings in platform-cicd
-  ├── GitLabChecker → queries pipelines, failed jobs, runners per app
+  ├── GitLabChecker → queries pipelines, pipeline jobs, failed jobs, runners per app
   ├── Evaluator     → merges results, applies thresholds → AppResult[]
   ├── Reporter      → reconciles incidents (open/close transitions)
   │                   writes results.json (overwrite)
   │                   writes incidents.json (lifecycle, notes preserved)
   │                   appends history.json (capped at 200 entries)
+  │                   appends metrics.json (hot, 60-day window; rotates to metrics-YYYY-MM.json)
+  │                   upserts job-metrics.json (weekly aggregates, 52-week cap)
   └── Alerter       → sends email if EnableEmail=true and non-OK apps exist
 
-Dashboard (always on)
-  ├── GET  /data/*      → serves results.json, incidents.json from PVC
+Dashboard — /  (always on)
+  ├── GET  /data/*      → serves all data files from PVC
   ├── POST /notes       → appends a new note to an incident
   ├── PUT  /notes       → updates an existing note by index
   ├── DELETE /notes     → removes a note by index
-  └── GET  /            → serves static dashboard assets
+  └── GET  /            → serves static dashboard (index.html, app.js)
       └── browser polls every 60s, cache: no-store
+
+Report — /report  (same server)
+  └── GET  /report      → serves report.html + report.js
+      └── browser polls every 5min; loads metrics.json + cold archives as needed
+          + job-metrics.json for per-job weekly charts
 ```

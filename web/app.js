@@ -60,6 +60,70 @@ function frag(...nodes) {
   return f;
 }
 
+// ---- Job helpers ----
+
+function fmtJobDuration(secs) {
+  if (!secs) return '—';
+  if (secs < 60) return Math.round(secs) + 's';
+  return Math.floor(secs / 60) + 'm ' + Math.round(secs % 60).toString().padStart(2, '0') + 's';
+}
+
+function jobBadgeClass(status) {
+  const map = { success: 'ok', passed: 'ok', failed: 'critical', canceled: 'canceled',
+                skipped: 'skipped', running: 'running', pending: 'pending', created: 'created' };
+  return map[status] || 'warning';
+}
+
+function renderJobExpandRow(app) {
+  const tr = document.createElement('tr');
+  tr.className = 'job-expand-row';
+  const cell = document.createElement('td');
+  cell.colSpan = 10;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'job-expand-wrap';
+
+  const jobs = app.gitlab?.lastPipelineJobs;
+  if (!jobs || jobs.length === 0) {
+    const msg = document.createElement('span');
+    msg.className = 'job-empty';
+    msg.textContent = 'No job data for this pipeline.';
+    wrap.appendChild(msg);
+  } else {
+    const table = document.createElement('table');
+    table.className = 'job-table';
+    table.innerHTML = '<thead><tr><th>Job</th><th>Stage</th><th>Status</th><th>Duration</th></tr></thead>';
+    const tbody = document.createElement('tbody');
+    jobs.forEach(j => {
+      const row = document.createElement('tr');
+      const nameTd = document.createElement('td');
+      nameTd.textContent = j.name;
+      const stageTd = document.createElement('td');
+      stageTd.className = 'job-stage';
+      stageTd.textContent = j.stage;
+      const statusTd = document.createElement('td');
+      const b = document.createElement('span');
+      b.className = `badge ${jobBadgeClass(j.status)}`;
+      b.textContent = j.status;
+      statusTd.appendChild(b);
+      const durTd = document.createElement('td');
+      durTd.className = 'job-dur';
+      durTd.textContent = fmtJobDuration(j.duration);
+      row.appendChild(nameTd);
+      row.appendChild(stageTd);
+      row.appendChild(statusTd);
+      row.appendChild(durTd);
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+  }
+
+  cell.appendChild(wrap);
+  tr.appendChild(cell);
+  return tr;
+}
+
 // ---- App row ----
 
 function renderSAs(ocp) {
@@ -175,7 +239,35 @@ function renderIssues(issues) {
 function renderAppRow(app) {
   const tr = document.createElement('tr');
   tr.className = `row-${app.level}`;
-  tr.appendChild(td(app.name));
+
+  // App name cell — with expand toggle when job data is available.
+  const hasJobs = Array.isArray(app.gitlab?.lastPipelineJobs);
+  const nameTd  = document.createElement('td');
+
+  if (hasJobs) {
+    const toggle = document.createElement('span');
+    toggle.className  = 'row-toggle';
+    toggle.textContent = '▶';
+    nameTd.appendChild(toggle);
+    nameTd.appendChild(document.createTextNode(app.name));
+    nameTd.style.cursor = 'pointer';
+
+    let expandRow = null;
+    nameTd.addEventListener('click', () => {
+      if (expandRow) {
+        expandRow.remove();
+        expandRow = null;
+        toggle.textContent = '▶';
+      } else {
+        expandRow = renderJobExpandRow(app);
+        tr.insertAdjacentElement('afterend', expandRow);
+        toggle.textContent = '▼';
+      }
+    });
+  } else {
+    nameTd.textContent = app.name;
+  }
+  tr.appendChild(nameTd);
   const lvlTd = document.createElement('td');
   lvlTd.appendChild(badge(app.level));
   tr.appendChild(lvlTd);

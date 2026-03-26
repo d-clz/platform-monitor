@@ -72,6 +72,7 @@ type OCPSummary struct {
 // GitLabSummary is the evaluated GitLab health for a single app.
 type GitLabSummary struct {
 	LastPipeline      *checker.PipelineInfo `json:"lastPipeline"`
+	LastPipelineJobs  []checker.JobInfo     `json:"lastPipelineJobs"`
 	FailedJobsByStage map[string]int         `json:"failedJobsByStage"`
 	RunnerCount       int                    `json:"runnerCount"`
 	StaleRunnerCount  int                    `json:"staleRunnerCount"`
@@ -300,6 +301,7 @@ func (e *Evaluator) evalToken(ts checker.TokenStatus, now time.Time) TokenHealth
 func (e *Evaluator) evaluateGitLab(s checker.GitLabAppStatus) (*GitLabSummary, Level, []string) {
 	summary := &GitLabSummary{
 		LastPipeline:      s.LastPipeline,
+		LastPipelineJobs:  s.LastPipelineJobs,
 		FailedJobsByStage: s.FailedJobsByStage,
 		Error:             s.Error,
 	}

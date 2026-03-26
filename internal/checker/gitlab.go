@@ -21,6 +21,15 @@ type PipelineInfo struct {
 	Ref       string    `json:"ref"`
 	CreatedAt time.Time `json:"createdAt"`
 	WebURL    string    `json:"webURL"`
+	Duration  int       `json:"duration"` // seconds; 0 when pipeline is still running
+}
+
+// JobInfo holds the key fields of a single job within a pipeline.
+type JobInfo struct {
+	Name     string  `json:"name"`
+	Stage    string  `json:"stage"`
+	Status   string  `json:"status"`
+	Duration float64 `json:"duration"` // seconds; 0 when job has not yet finished
 }
 
 // RunnerStatus is the health snapshot for a single GitLab runner.
@@ -37,6 +46,7 @@ type GitLabAppStatus struct {
 	AppName           string
 	ProjectID         int
 	LastPipeline      *PipelineInfo  // nil if no pipelines exist
+	LastPipelineJobs  []JobInfo      // jobs from the most recent pipeline
 	FailedJobsByStage map[string]int // stage → count within FailureWindow
 	Runners           []RunnerStatus
 	Error             string // non-empty when any API call for this app failed
@@ -77,6 +87,16 @@ func (c *GitLabChecker) Check(ctx context.Context, apps []config.App) ([]GitLabA
 		}
 		status.LastPipeline = pipeline
 
+		if pipeline != nil {
+			jobs, err := c.getLastPipelineJobs(ctx, app.GitLabProjectID, pipeline.ID)
+			if err != nil {
+				status.Error = err.Error()
+				results = append(results, status)
+				continue
+			}
+			status.LastPipelineJobs = jobs
+		}
+
 		since := now.Add(-c.FailureWindow)
 		failedByStage, err := c.getFailedJobsByStage(ctx, app.GitLabProjectID, since)
 		if err != nil {
@@ -115,12 +135,15 @@ type glPipeline struct {
 	Ref       string `json:"ref"`
 	CreatedAt string `json:"created_at"`
 	WebURL    string `json:"web_url"`
+	Duration  int    `json:"duration"` // seconds; 0 when still running
 }
 
 type glJob struct {
-	Status    string `json:"status"`
-	Stage     string `json:"stage"`
-	CreatedAt string `json:"created_at"`
+	Name      string  `json:"name"`
+	Status    string  `json:"status"`
+	Stage     string  `json:"stage"`
+	Duration  float64 `json:"duration"` // seconds; null decodes as 0
+	CreatedAt string  `json:"created_at"`
 }
 
 type glRunner struct {
@@ -160,7 +183,29 @@ func (c *GitLabChecker) getLastPipeline(ctx context.Context, projectID int) (*Pi
 		Ref:       p.Ref,
 		CreatedAt: createdAt,
 		WebURL:    p.WebURL,
+		Duration:  p.Duration,
 	}, nil
+}
+
+func (c *GitLabChecker) getLastPipelineJobs(ctx context.Context, projectID, pipelineID int) ([]JobInfo, error) {
+	path := fmt.Sprintf("/api/v4/projects/%d/pipelines/%d/jobs", projectID, pipelineID)
+	params := url.Values{"per_page": {"100"}}
+
+	var raw []glJob
+	if err := c.get(ctx, path, params, &raw); err != nil {
+		return nil, err
+	}
+
+	jobs := make([]JobInfo, 0, len(raw))
+	for _, j := range raw {
+		jobs = append(jobs, JobInfo{
+			Name:     j.Name,
+			Stage:    j.Stage,
+			Status:   j.Status,
+			Duration: j.Duration,
+		})
+	}
+	return jobs, nil
 }
 
 func (c *GitLabChecker) getFailedJobsByStage(ctx context.Context, projectID int, since time.Time) (map[string]int, error) {

@@ -56,6 +56,15 @@ func (r *Reporter) Write(results evaluator.Results) error {
 			return fmt.Errorf("appending history.json: %w", err)
 		}
 	}
+
+	// Metrics are written on every run (not just non-OK) to maintain a
+	// complete time-series for error rate and duration trend calculations.
+	if err := r.appendMetrics(results); err != nil {
+		return fmt.Errorf("appending metrics: %w", err)
+	}
+	if err := r.appendJobMetrics(results); err != nil {
+		return fmt.Errorf("appending job metrics: %w", err)
+	}
 	return nil
 }
 
