@@ -30,17 +30,27 @@ type HistoryEntry struct {
 	Alerts        []AlertEntry `json:"alerts"`
 }
 
+const defaultHistoryLimit = 200
+
 // Reporter writes monitoring results to a directory (typically a PVC mount).
 type Reporter struct {
-	DataDir string
+	DataDir      string
+	HistoryLimit int // max entries kept in history.json; 0 uses defaultHistoryLimit
 }
 
-// Write atomically overwrites results.json with the latest snapshot and, if any
-// app is in a non-OK state, appends an entry to history.json.
+// Write reconciles incidents, atomically overwrites results.json with the
+// latest snapshot, and appends to history.json when non-OK apps are present.
 func (r *Reporter) Write(results evaluator.Results) error {
+	// Reconcile incidents before overwriting results.json so we can read the
+	// previous snapshot to detect ok→degraded and degraded→ok transitions.
+	if err := r.reconcileIncidents(results, results.Timestamp); err != nil {
+		return fmt.Errorf("reconciling incidents: %w", err)
+	}
+
 	if err := r.writeResults(results); err != nil {
 		return fmt.Errorf("writing results.json: %w", err)
 	}
+
 	if results.WarningCount+results.CriticalCount+results.ErrorCount > 0 {
 		if err := r.appendHistory(results); err != nil {
 			return fmt.Errorf("appending history.json: %w", err)
@@ -93,6 +103,15 @@ func (r *Reporter) appendHistory(results evaluator.Results) error {
 	}
 
 	history = append(history, entry)
+
+	// Trim oldest entries so the file doesn't grow unboundedly.
+	limit := r.HistoryLimit
+	if limit <= 0 {
+		limit = defaultHistoryLimit
+	}
+	if len(history) > limit {
+		history = history[len(history)-limit:]
+	}
 
 	data, err := json.MarshalIndent(history, "", "  ")
 	if err != nil {

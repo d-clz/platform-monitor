@@ -1,0 +1,208 @@
+{
+  "timestamp": "2026-03-26T10:30:00Z",
+  "apps": [
+    {
+      "name": "pfm",
+      "source": "ocp_gitlab",
+      "level": "ok",
+      "issues": [],
+      "ocp": {
+        "imageBuilderSAPresent": true,
+        "deployerSAPresent": true,
+        "imageBuilderToken": { "present": true, "ageDays": 15, "level": "ok" },
+        "deployerToken":     { "present": true, "ageDays": 22, "level": "ok" },
+        "bindingNamespaces": ["pfm-sit", "pfm-uat", "pfm-prod"]
+      },
+      "gitlab": {
+        "lastPipeline": {
+          "id": 4821,
+          "status": "success",
+          "ref": "main",
+          "createdAt": "2026-03-26T09:55:12Z",
+          "webURL": "https://gitlab.example.com/platform/pfm/-/pipelines/4821"
+        },
+        "failedJobsByStage": {},
+        "runnerCount": 3,
+        "staleRunnerCount": 0
+      }
+    },
+    {
+      "name": "crm",
+      "source": "ocp_gitlab",
+      "level": "warning",
+      "issues": [
+        "image-builder token age 70 days (warning)"
+      ],
+      "ocp": {
+        "imageBuilderSAPresent": true,
+        "deployerSAPresent": true,
+        "imageBuilderToken": { "present": true, "ageDays": 70, "level": "warning" },
+        "deployerToken":     { "present": true, "ageDays": 18, "level": "ok" },
+        "bindingNamespaces": ["crm-sit", "crm-uat"]
+      },
+      "gitlab": {
+        "lastPipeline": {
+          "id": 3310,
+          "status": "success",
+          "ref": "main",
+          "createdAt": "2026-03-26T08:10:45Z",
+          "webURL": "https://gitlab.example.com/platform/crm/-/pipelines/3310"
+        },
+        "failedJobsByStage": {},
+        "runnerCount": 2,
+        "staleRunnerCount": 0
+      }
+    },
+    {
+      "name": "svc",
+      "source": "ocp_gitlab",
+      "level": "critical",
+      "issues": [
+        "deployer token age 94 days (critical)",
+        "last pipeline status: failed"
+      ],
+      "ocp": {
+        "imageBuilderSAPresent": true,
+        "deployerSAPresent": true,
+        "imageBuilderToken": { "present": true, "ageDays": 30, "level": "ok" },
+        "deployerToken":     { "present": true, "ageDays": 94, "level": "critical" },
+        "bindingNamespaces": ["svc-sit", "svc-uat", "svc-prod"]
+      },
+      "gitlab": {
+        "lastPipeline": {
+          "id": 2205,
+          "status": "failed",
+          "ref": "main",
+          "createdAt": "2026-03-26T07:44:00Z",
+          "webURL": "https://gitlab.example.com/platform/svc/-/pipelines/2205"
+        },
+        "failedJobsByStage": {
+          "build": 1,
+          "test":  3
+        },
+        "runnerCount": 2,
+        "staleRunnerCount": 0
+      }
+    },
+    {
+      "name": "billing",
+      "source": "ocp_gitlab",
+      "level": "warning",
+      "issues": [
+        "last pipeline status: failed",
+        "all 2 runner(s) stale"
+      ],
+      "ocp": {
+        "imageBuilderSAPresent": true,
+        "deployerSAPresent": true,
+        "imageBuilderToken": { "present": true, "ageDays": 44, "level": "ok" },
+        "deployerToken":     { "present": true, "ageDays": 51, "level": "ok" },
+        "bindingNamespaces": ["billing-sit", "billing-uat"]
+      },
+      "gitlab": {
+        "lastPipeline": {
+          "id": 1887,
+          "status": "failed",
+          "ref": "main",
+          "createdAt": "2026-03-25T23:18:33Z",
+          "webURL": "https://gitlab.example.com/platform/billing/-/pipelines/1887"
+        },
+        "failedJobsByStage": {
+          "deploy": 2
+        },
+        "runnerCount": 2,
+        "staleRunnerCount": 2
+      }
+    },
+    {
+      "name": "auth",
+      "source": "ocp_gitlab",
+      "level": "error",
+      "issues": [
+        "GitLab API error: API /api/v4/projects/89/pipelines returned 503: service unavailable"
+      ],
+      "ocp": {
+        "imageBuilderSAPresent": true,
+        "deployerSAPresent": true,
+        "imageBuilderToken": { "present": true, "ageDays": 8, "level": "ok" },
+        "deployerToken":     { "present": true, "ageDays": 8, "level": "ok" },
+        "bindingNamespaces": ["auth-sit", "auth-uat", "auth-prod"]
+      },
+      "gitlab": {
+        "lastPipeline": null,
+        "failedJobsByStage": {},
+        "runnerCount": 0,
+        "staleRunnerCount": 0,
+        "error": "API /api/v4/projects/89/pipelines returned 503: service unavailable"
+      }
+    },
+    {
+      "name": "infra",
+      "source": "ocp_gitlab",
+      "level": "warning",
+      "issues": [
+        "image-builder SA has no rolebindings",
+        "deployer token secret missing"
+      ],
+      "ocp": {
+        "imageBuilderSAPresent": true,
+        "deployerSAPresent": true,
+        "imageBuilderToken": { "present": true, "ageDays": 12, "level": "ok" },
+        "deployerToken":     { "present": false, "ageDays": 0, "level": "ok" },
+        "bindingNamespaces": []
+      },
+      "gitlab": {
+        "lastPipeline": {
+          "id": 990,
+          "status": "success",
+          "ref": "main",
+          "createdAt": "2026-03-25T15:00:00Z",
+          "webURL": "https://gitlab.example.com/platform/infra/-/pipelines/990"
+        },
+        "failedJobsByStage": {},
+        "runnerCount": 1,
+        "staleRunnerCount": 0
+      }
+    },
+    {
+      "name": "legacy",
+      "source": "ocp_only",
+      "level": "ok",
+      "issues": [],
+      "ocp": {
+        "imageBuilderSAPresent": true,
+        "deployerSAPresent": true,
+        "imageBuilderToken": { "present": true, "ageDays": 5, "level": "ok" },
+        "deployerToken":     { "present": true, "ageDays": 5, "level": "ok" },
+        "bindingNamespaces": ["legacy-sit"]
+      },
+      "gitlab": null
+    },
+    {
+      "name": "newapp",
+      "source": "gitlab_only",
+      "level": "warning",
+      "issues": [
+        "app has no OCP service accounts (gitlab-only)"
+      ],
+      "ocp": null,
+      "gitlab": {
+        "lastPipeline": {
+          "id": 42,
+          "status": "success",
+          "ref": "main",
+          "createdAt": "2026-03-26T10:00:00Z",
+          "webURL": "https://gitlab.example.com/platform/newapp/-/pipelines/42"
+        },
+        "failedJobsByStage": {},
+        "runnerCount": 1,
+        "staleRunnerCount": 0
+      }
+    }
+  ],
+  "totalApps": 8,
+  "okCount": 2,
+  "warningCount": 4,
+  "criticalCount": 1,
+  "errorCount": 1
+}

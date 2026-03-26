@@ -1,0 +1,140 @@
+[
+  {
+    "timestamp": "2026-03-25T09:00:00Z",
+    "warningCount": 1,
+    "criticalCount": 0,
+    "errorCount": 0,
+    "alerts": [
+      {
+        "appName": "crm",
+        "level": "warning",
+        "issues": ["image-builder token age 68 days (warning)"]
+      }
+    ]
+  },
+  {
+    "timestamp": "2026-03-25T12:15:00Z",
+    "warningCount": 1,
+    "criticalCount": 0,
+    "errorCount": 0,
+    "alerts": [
+      {
+        "appName": "crm",
+        "level": "warning",
+        "issues": ["image-builder token age 68 days (warning)"]
+      }
+    ]
+  },
+  {
+    "timestamp": "2026-03-25T18:30:00Z",
+    "warningCount": 2,
+    "criticalCount": 0,
+    "errorCount": 0,
+    "alerts": [
+      {
+        "appName": "crm",
+        "level": "warning",
+        "issues": ["image-builder token age 68 days (warning)"]
+      },
+      {
+        "appName": "billing",
+        "level": "warning",
+        "issues": ["last pipeline status: failed"]
+      }
+    ]
+  },
+  {
+    "timestamp": "2026-03-26T00:00:00Z",
+    "warningCount": 2,
+    "criticalCount": 1,
+    "errorCount": 0,
+    "alerts": [
+      {
+        "appName": "svc",
+        "level": "critical",
+        "issues": ["deployer token age 93 days (critical)", "last pipeline status: failed"]
+      },
+      {
+        "appName": "crm",
+        "level": "warning",
+        "issues": ["image-builder token age 69 days (warning)"]
+      },
+      {
+        "appName": "billing",
+        "level": "warning",
+        "issues": ["last pipeline status: failed", "all 2 runner(s) stale"]
+      }
+    ]
+  },
+  {
+    "timestamp": "2026-03-26T06:15:00Z",
+    "warningCount": 3,
+    "criticalCount": 1,
+    "errorCount": 1,
+    "alerts": [
+      {
+        "appName": "svc",
+        "level": "critical",
+        "issues": ["deployer token age 94 days (critical)", "last pipeline status: failed"]
+      },
+      {
+        "appName": "auth",
+        "level": "error",
+        "issues": ["GitLab API error: API /api/v4/projects/89/pipelines returned 503: service unavailable"]
+      },
+      {
+        "appName": "crm",
+        "level": "warning",
+        "issues": ["image-builder token age 70 days (warning)"]
+      },
+      {
+        "appName": "billing",
+        "level": "warning",
+        "issues": ["last pipeline status: failed", "all 2 runner(s) stale"]
+      },
+      {
+        "appName": "infra",
+        "level": "warning",
+        "issues": ["image-builder SA has no rolebindings", "deployer token secret missing"]
+      }
+    ]
+  },
+  {
+    "timestamp": "2026-03-26T10:30:00Z",
+    "warningCount": 4,
+    "criticalCount": 1,
+    "errorCount": 1,
+    "alerts": [
+      {
+        "appName": "svc",
+        "level": "critical",
+        "issues": ["deployer token age 94 days (critical)", "last pipeline status: failed"]
+      },
+      {
+        "appName": "auth",
+        "level": "error",
+        "issues": ["GitLab API error: API /api/v4/projects/89/pipelines returned 503: service unavailable"]
+      },
+      {
+        "appName": "crm",
+        "level": "warning",
+        "issues": ["image-builder token age 70 days (warning)"]
+      },
+      {
+        "appName": "billing",
+        "level": "warning",
+        "issues": ["last pipeline status: failed", "all 2 runner(s) stale"]
+      },
+      {
+        "appName": "infra",
+        "level": "warning",
+        "issues": ["image-builder SA has no rolebindings", "deployer token secret missing"]
+      },
+      {
+        "appName": "newapp",
+        "level": "warning",
+        "issues": ["app has no OCP service accounts (gitlab-only)"]
+      }
+    ]
+  }
+]

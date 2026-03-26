@@ -27,7 +27,7 @@
     header h1 { font-size: 16px; font-weight: 600; letter-spacing: 0.05em; color: #f1f5f9; }
     #last-updated { font-size: 12px; color: #94a3b8; }
 
-    main { padding: 24px; max-width: 1400px; margin: 0 auto; }
+    main { padding: 28px 40px 40px; }
 
     /* ---- Summary bar ---- */
     #summary {
@@ -57,8 +57,8 @@
     section { margin-bottom: 32px; }
     section h2 { font-size: 13px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
 
-    .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #334155; }
-    table { width: 100%; border-collapse: collapse; }
+    .table-wrap { border-radius: 8px; border: 1px solid #334155; margin-bottom: 4px; }
+    table { width: 100%; border-collapse: collapse; min-width: max-content; }
     th {
       background: #1e293b;
       padding: 10px 14px;
@@ -69,15 +69,30 @@
       letter-spacing: 0.08em;
       border-bottom: 1px solid #334155;
       white-space: nowrap;
+      vertical-align: middle;
     }
     td {
       padding: 10px 14px;
       border-bottom: 1px solid #1e293b;
-      vertical-align: top;
-      white-space: nowrap;
+      vertical-align: middle;
+      /* no global white-space: nowrap — let wrapping columns breathe */
     }
+    /* columns that should never wrap */
+    td:nth-child(1), /* App */
+    td:nth-child(2), /* Level */
+    td:nth-child(3), /* Source */
+    td:nth-child(7), /* Pipeline */
+    td:nth-child(9)  /* Runners */
+    { white-space: nowrap; }
+
     tr:last-child td { border-bottom: none; }
     tr:hover td { background: #1e2d42; }
+
+    /* left accent stripe by level */
+    tr.row-warning  td:first-child { border-left: 3px solid #fbbf24; padding-left: 11px; }
+    tr.row-critical td:first-child { border-left: 3px solid #f87171; padding-left: 11px; }
+    tr.row-error    td:first-child { border-left: 3px solid #c084fc; padding-left: 11px; }
+    tr.row-ok       td:first-child { border-left: 3px solid #4ade80; padding-left: 11px; }
 
     /* ---- Level badges ---- */
     .badge {
@@ -108,39 +123,196 @@
     .pill.missing { background: #450a0a; color: #f87171; }
     .pill.warn    { background: #451a03; color: #fbbf24; }
 
-    .ns-list { display: flex; gap: 4px; flex-wrap: wrap; max-width: 220px; }
+    .ns-list { display: flex; gap: 4px; flex-wrap: wrap; min-width: 120px; max-width: 240px; }
     .ns-tag {
       background: #1e3a5f;
       color: #93c5fd;
       padding: 1px 6px;
       border-radius: 4px;
       font-size: 11px;
+      white-space: nowrap;
     }
 
-    .issues-list { color: #fbbf24; font-size: 12px; white-space: normal; max-width: 300px; }
-    .issues-list li { margin-left: 16px; }
+    .issues-list { color: #fbbf24; font-size: 12px; min-width: 180px; max-width: 320px; }
+    .issues-list li { margin-left: 16px; line-height: 1.6; }
+
+    /* token label prefix (IB / DEP) */
+    .tok-label {
+      font-size: 11px;
+      color: #64748b;
+      margin-right: 3px;
+    }
+    .tok-label + .pill { margin-right: 6px; }
 
     /* ---- Pipeline cell ---- */
     .pipeline-link { color: #93c5fd; text-decoration: none; }
     .pipeline-link:hover { text-decoration: underline; }
 
-    /* ---- History panel ---- */
-    #history-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
-    .hist-entry {
+    /* ---- Incident cards ---- */
+    #incident-list { display: flex; flex-direction: column; gap: 12px; }
+
+    .inc-card {
       background: #1e293b;
       border: 1px solid #334155;
-      border-radius: 6px;
-      padding: 10px 14px;
+      border-radius: 8px;
+      overflow: hidden;
     }
-    .hist-entry .hist-header {
+    .inc-card.open     { border-left: 4px solid #fbbf24; }
+    .inc-card.open.critical { border-left-color: #f87171; }
+    .inc-card.open.error    { border-left-color: #c084fc; }
+    .inc-card.resolved { border-left: 4px solid #4ade80; opacity: 0.85; }
+
+    .inc-header {
       display: flex;
       align-items: center;
-      gap: 12px;
-      margin-bottom: 6px;
+      gap: 10px;
+      padding: 12px 16px;
+      border-bottom: 1px solid #334155;
+      flex-wrap: wrap;
     }
-    .hist-entry .hist-ts { font-size: 12px; color: #94a3b8; }
-    .hist-alerts { font-size: 12px; color: #cbd5e1; padding-left: 12px; }
-    .hist-alerts li { margin-bottom: 2px; }
+    .inc-app { font-weight: 600; font-size: 14px; color: #f1f5f9; }
+    .inc-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-left: auto;
+    }
+    .inc-status.open     { color: #fbbf24; }
+    .inc-status.resolved { color: #4ade80; }
+    .inc-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .open .inc-dot { animation: pulse 1.5s infinite; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+    .inc-meta { font-size: 11px; color: #64748b; }
+    .inc-duration {
+      font-size: 11px;
+      background: #0f172a;
+      color: #94a3b8;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+
+    .inc-body { padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; }
+
+    .inc-issues-title,
+    .inc-notes-title  { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+    .inc-issues-list  { list-style: none; }
+    .inc-issues-list li {
+      font-size: 12px;
+      color: #fbbf24;
+      padding: 2px 0 2px 14px;
+      position: relative;
+    }
+    .inc-issues-list li::before { content: "•"; position: absolute; left: 0; }
+
+    .inc-notes-list { display: flex; flex-direction: column; gap: 8px; }
+    .note-item {
+      background: #0f172a;
+      border-radius: 6px;
+      padding: 8px 12px;
+    }
+    .note-item-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px; }
+    .note-ts   { font-size: 11px; color: #64748b; }
+    .note-text { font-size: 12px; color: #cbd5e1; line-height: 1.6; white-space: pre-wrap; }
+
+    .note-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s; }
+    .note-item:hover .note-actions { opacity: 1; }
+    .note-action-btn {
+      background: none;
+      border: 1px solid #334155;
+      border-radius: 4px;
+      color: #64748b;
+      font-family: inherit;
+      font-size: 10px;
+      padding: 1px 7px;
+      cursor: pointer;
+      line-height: 1.6;
+    }
+    .note-action-btn:hover { color: #94a3b8; border-color: #475569; }
+    .note-action-btn.delete:hover { color: #f87171; border-color: #7f1d1d; }
+
+    .note-inline-edit { display: none; flex-direction: column; gap: 6px; margin-top: 6px; }
+    .note-inline-edit textarea {
+      background: #0f172a;
+      border: 1px solid #3b82f6;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-family: inherit;
+      font-size: 12px;
+      padding: 8px 10px;
+      resize: vertical;
+      min-height: 56px;
+      outline: none;
+    }
+    .note-inline-actions { display: flex; gap: 6px; }
+    .note-inline-actions button {
+      background: none;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #94a3b8;
+      font-family: inherit;
+      font-size: 11px;
+      padding: 4px 12px;
+      cursor: pointer;
+    }
+    .note-inline-actions button.save { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
+    .note-inline-actions button.save:hover  { background: #2563eb; }
+    .note-inline-actions button.cancel:hover { color: #e2e8f0; }
+
+    .note-form { display: flex; gap: 8px; align-items: flex-end; }
+    .note-form textarea {
+      flex: 1;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-family: inherit;
+      font-size: 12px;
+      padding: 8px 10px;
+      resize: vertical;
+      min-height: 56px;
+      outline: none;
+    }
+    .note-form textarea:focus { border-color: #3b82f6; }
+    .note-form textarea::placeholder { color: #475569; }
+    .note-form button {
+      background: #1d4ed8;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 14px;
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+      align-self: flex-end;
+    }
+    .note-form button:hover   { background: #2563eb; }
+    .note-form button:active  { background: #1e40af; }
+    .note-form button:disabled { background: #334155; color: #64748b; cursor: default; }
+
+    .note-toggle-btn {
+      background: none;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #64748b;
+      font-family: inherit;
+      font-size: 11px;
+      padding: 4px 10px;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+    .note-toggle-btn:hover { border-color: #475569; color: #94a3b8; }
 
     /* ---- Empty / error states ---- */
     .empty { color: #475569; font-style: italic; padding: 24px 0; text-align: center; }
@@ -198,10 +370,10 @@
     </section>
 
     <section>
-      <h2>Alert History</h2>
-      <ul id="history-list">
-        <li class="empty">Loading…</li>
-      </ul>
+      <h2>Incidents</h2>
+      <div id="incident-list">
+        <div class="empty">Loading…</div>
+      </div>
     </section>
   </main>
 

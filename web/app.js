@@ -5,7 +5,7 @@ const REFRESH_MS = 60_000;
 // ---- Fetch helpers ----
 
 async function fetchJSON(url) {
-  const res = await fetch(url);
+  const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) throw new Error(`${url} returned ${res.status}`);
   return res.json();
 }
@@ -75,16 +75,19 @@ function renderTokens(ocp) {
   if (!ocp) return document.createTextNode('—');
   const wrap = document.createElement('div');
   wrap.className = 'sa-status';
+
   const ibLabel = document.createElement('span');
-  ibLabel.style.cssText = 'font-size:11px;color:#64748b;margin-right:2px';
+  ibLabel.className = 'tok-label';
   ibLabel.textContent = 'IB:';
   wrap.appendChild(ibLabel);
   wrap.appendChild(tokenPill(ocp.imageBuilderToken));
+
   const depLabel = document.createElement('span');
-  depLabel.style.cssText = 'font-size:11px;color:#64748b;margin-left:6px;margin-right:2px';
+  depLabel.className = 'tok-label';
   depLabel.textContent = 'DEP:';
   wrap.appendChild(depLabel);
   wrap.appendChild(tokenPill(ocp.deployerToken));
+
   return wrap;
 }
 
@@ -171,6 +174,7 @@ function renderIssues(issues) {
 
 function renderAppRow(app) {
   const tr = document.createElement('tr');
+  tr.className = `row-${app.level}`;
   tr.appendChild(td(app.name));
   const lvlTd = document.createElement('td');
   lvlTd.appendChild(badge(app.level));
@@ -235,61 +239,325 @@ function renderResults(data) {
   data.apps.forEach(app => tbody.appendChild(renderAppRow(app)));
 }
 
-// ---- History rendering ----
+// ---- Incident rendering ----
 
-function renderHistory(entries) {
-  const list = document.getElementById('history-list');
+function fmtDuration(minutes) {
+  if (!minutes && minutes !== 0) return '';
+  if (minutes < 60)  return `${minutes}m`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  return `${Math.floor(minutes / 1440)}d ${Math.floor((minutes % 1440) / 60)}h`;
+}
+
+function fmtTS(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString();
+}
+
+function renderNoteItem(inc, note, idx) {
+  const item = document.createElement('div');
+  item.className = 'note-item';
+
+  // Header: timestamp + action buttons
+  const header = document.createElement('div');
+  header.className = 'note-item-header';
+
+  const ts = document.createElement('span');
+  ts.className = 'note-ts';
+  ts.textContent = fmtTS(note.timestamp);
+  header.appendChild(ts);
+
+  const actions = document.createElement('div');
+  actions.className = 'note-actions';
+
+  const editBtn = document.createElement('button');
+  editBtn.type = 'button';
+  editBtn.className = 'note-action-btn';
+  editBtn.textContent = 'Edit';
+
+  const delBtn = document.createElement('button');
+  delBtn.type = 'button';
+  delBtn.className = 'note-action-btn delete';
+  delBtn.textContent = 'Delete';
+
+  actions.appendChild(editBtn);
+  actions.appendChild(delBtn);
+  header.appendChild(actions);
+  item.appendChild(header);
+
+  // Content (view mode)
+  const text = document.createElement('div');
+  text.className = 'note-text';
+  text.textContent = note.content;
+  item.appendChild(text);
+
+  // Inline edit form (hidden by default)
+  const editForm = document.createElement('div');
+  editForm.className = 'note-inline-edit';
+  const editArea = document.createElement('textarea');
+  editArea.value = note.content;
+  const editActions = document.createElement('div');
+  editActions.className = 'note-inline-actions';
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'save';
+  saveBtn.textContent = 'Save';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'cancel';
+  cancelBtn.textContent = 'Cancel';
+  editActions.appendChild(saveBtn);
+  editActions.appendChild(cancelBtn);
+  editForm.appendChild(editArea);
+  editForm.appendChild(editActions);
+  item.appendChild(editForm);
+
+  // Toggle into edit mode
+  const openEdit = () => {
+    text.style.display = 'none';
+    actions.style.opacity = '0';
+    actions.style.pointerEvents = 'none';
+    editForm.style.display = 'flex';
+    editArea.focus();
+    editArea.setSelectionRange(editArea.value.length, editArea.value.length);
+  };
+  const closeEdit = () => {
+    editForm.style.display = 'none';
+    text.style.display = '';
+    actions.style.opacity = '';
+    actions.style.pointerEvents = '';
+    editArea.value = note.content;
+  };
+
+  editBtn.addEventListener('click', openEdit);
+  cancelBtn.addEventListener('click', closeEdit);
+
+  saveBtn.addEventListener('click', async () => {
+    const content = editArea.value.trim();
+    if (!content) return;
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+    try {
+      const res = await fetch('/notes', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ incidentId: inc.id, noteIndex: idx, content }),
+      });
+      if (res.ok) {
+        await refresh();
+      } else {
+        alert(`Failed to update note: ${res.status} ${res.statusText}`);
+        closeEdit();
+      }
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save';
+    }
+  });
+
+  delBtn.addEventListener('click', async () => {
+    if (!confirm('Delete this note?')) return;
+    delBtn.disabled = true;
+    try {
+      const res = await fetch('/notes', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ incidentId: inc.id, noteIndex: idx }),
+      });
+      if (res.ok) {
+        await refresh();
+      } else {
+        alert(`Failed to delete note: ${res.status} ${res.statusText}`);
+      }
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      delBtn.disabled = false;
+    }
+  });
+
+  return item;
+}
+
+function renderIncidentCard(inc) {
+  const card = document.createElement('div');
+  card.className = `inc-card ${inc.status} ${inc.peakLevel}`;
+
+  // ---- Header ----
+  const header = document.createElement('div');
+  header.className = 'inc-header';
+
+  const appSpan = document.createElement('span');
+  appSpan.className = 'inc-app';
+  appSpan.textContent = inc.appName;
+  header.appendChild(appSpan);
+
+  header.appendChild(badge(inc.peakLevel));
+
+  const metaSpan = document.createElement('span');
+  metaSpan.className = 'inc-meta';
+  if (inc.status === 'resolved') {
+    metaSpan.textContent = `${fmtTS(inc.openedAt)} → ${fmtTS(inc.closedAt)}`;
+  } else {
+    metaSpan.textContent = `opened ${fmtTS(inc.openedAt)}`;
+  }
+  header.appendChild(metaSpan);
+
+  if (inc.status === 'resolved' && inc.durationMinutes != null) {
+    const dur = document.createElement('span');
+    dur.className = 'inc-duration';
+    dur.textContent = fmtDuration(inc.durationMinutes);
+    header.appendChild(dur);
+  }
+
+  const statusEl = document.createElement('span');
+  statusEl.className = `inc-status ${inc.status}`;
+  const dot = document.createElement('span');
+  dot.className = 'inc-dot';
+  statusEl.appendChild(dot);
+  statusEl.appendChild(document.createTextNode(
+    inc.status === 'open' ? 'Open' : 'Resolved'
+  ));
+  header.appendChild(statusEl);
+
+  card.appendChild(header);
+
+  // ---- Body ----
+  const body = document.createElement('div');
+  body.className = 'inc-body';
+
+  // Issues
+  if (inc.issues && inc.issues.length > 0) {
+    const issueWrap = document.createElement('div');
+    const issueTitle = document.createElement('div');
+    issueTitle.className = 'inc-issues-title';
+    issueTitle.textContent = 'Issues';
+    issueWrap.appendChild(issueTitle);
+    const ul = document.createElement('ul');
+    ul.className = 'inc-issues-list';
+    inc.issues.forEach(iss => {
+      const li = document.createElement('li');
+      li.textContent = iss;
+      ul.appendChild(li);
+    });
+    issueWrap.appendChild(ul);
+    body.appendChild(issueWrap);
+  }
+
+  // Notes
+  const notesWrap = document.createElement('div');
+  const notesTitle = document.createElement('div');
+  notesTitle.className = 'inc-notes-title';
+  notesTitle.textContent = 'Notes';
+  notesWrap.appendChild(notesTitle);
+
+  if (inc.notes && inc.notes.length > 0) {
+    const notesList = document.createElement('div');
+    notesList.className = 'inc-notes-list';
+    inc.notes.forEach((n, idx) => notesList.appendChild(renderNoteItem(inc, n, idx)));
+    notesWrap.appendChild(notesList);
+  }
+
+  // Note form — visibility depends on incident state:
+  //   has notes              → collapsed, toggled by "Edit" button
+  //   resolved + no notes    → collapsed, toggled by "Add note" button
+  //   open + no notes        → hidden (stay focused on fixing)
+  const hasNotes   = inc.notes && inc.notes.length > 0;
+  const isResolved = inc.status === 'resolved';
+
+  const showToggle = hasNotes || isResolved;
+
+  if (showToggle) {
+    const toggleLabel = 'Add note';
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'note-toggle-btn';
+    toggleBtn.textContent = toggleLabel;
+
+    const form = document.createElement('form');
+    form.className = 'note-form';
+    form.style.display = 'none';
+    const textarea = document.createElement('textarea');
+    textarea.placeholder = 'Root cause, fix, lesson learned…';
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'submit';
+    saveBtn.textContent = 'Save';
+    form.appendChild(textarea);
+    form.appendChild(saveBtn);
+
+    toggleBtn.addEventListener('click', () => {
+      const visible = form.style.display !== 'none';
+      form.style.display = visible ? 'none' : 'flex';
+      toggleBtn.textContent = visible ? toggleLabel : 'Cancel';
+      if (!visible) textarea.focus();
+    });
+
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const content = textarea.value.trim();
+      if (!content) return;
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
+      try {
+        const res = await fetch('/notes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ incidentId: inc.id, content }),
+        });
+        if (res.ok) {
+          textarea.value = '';
+          form.style.display = 'none';
+          await refresh();
+        } else {
+          alert(`Failed to save note: ${res.status} ${res.statusText}`);
+        }
+      } catch (err) {
+        alert(`Error: ${err.message}`);
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+      }
+    });
+
+    notesWrap.appendChild(toggleBtn);
+    notesWrap.appendChild(form);
+  }
+
+  body.appendChild(notesWrap);
+  card.appendChild(body);
+  return card;
+}
+
+function renderIncidents(incidents) {
+  const list = document.getElementById('incident-list');
   list.innerHTML = '';
 
-  if (!entries || entries.length === 0) {
-    const li = document.createElement('li');
-    li.className = 'empty';
-    li.textContent = 'No alert history yet.';
-    list.appendChild(li);
+  if (!incidents || incidents.length === 0) {
+    const el = document.createElement('div');
+    el.className = 'empty';
+    el.textContent = 'No incidents recorded yet.';
+    list.appendChild(el);
     return;
   }
 
-  // Show newest first.
-  [...entries].reverse().forEach(entry => {
-    const li = document.createElement('li');
-    li.className = 'hist-entry';
+  // Open incidents first (newest open → oldest open), then resolved (newest first).
+  const open     = incidents.filter(i => i.status === 'open')
+    .sort((a, b) => new Date(b.openedAt) - new Date(a.openedAt));
+  const resolved = incidents.filter(i => i.status === 'resolved')
+    .sort((a, b) => new Date(b.openedAt) - new Date(a.openedAt));
 
-    const header = document.createElement('div');
-    header.className = 'hist-header';
-
-    const ts = document.createElement('span');
-    ts.className = 'hist-ts';
-    ts.textContent = new Date(entry.timestamp).toLocaleString();
-    header.appendChild(ts);
-
-    if (entry.criticalCount > 0) header.appendChild(badge('critical'));
-    if (entry.warningCount  > 0) header.appendChild(badge('warning'));
-    if (entry.errorCount    > 0) header.appendChild(badge('error'));
-
-    li.appendChild(header);
-
-    if (entry.alerts && entry.alerts.length > 0) {
-      const ul = document.createElement('ul');
-      ul.className = 'hist-alerts';
-      entry.alerts.forEach(a => {
-        const item = document.createElement('li');
-        item.textContent = `[${a.level.toUpperCase()}] ${a.appName}: ${(a.issues || []).join('; ')}`;
-        ul.appendChild(item);
-      });
-      li.appendChild(ul);
-    }
-
-    list.appendChild(li);
-  });
+  [...open, ...resolved].forEach(inc => list.appendChild(renderIncidentCard(inc)));
 }
 
 // ---- Refresh loop ----
 
 async function refresh() {
   try {
-    const [results, history] = await Promise.allSettled([
+    const [results, incidents] = await Promise.allSettled([
       fetchJSON('/data/results.json'),
-      fetchJSON('/data/history.json'),
+      fetchJSON('/data/incidents.json'),
     ]);
 
     clearError();
@@ -300,12 +568,11 @@ async function refresh() {
       showError(`Could not load results.json: ${results.reason.message}`);
     }
 
-    if (history.status === 'fulfilled') {
-      renderHistory(history.value);
-    } else if (history.reason?.message?.includes('404')) {
-      renderHistory([]);
+    if (incidents.status === 'fulfilled') {
+      renderIncidents(incidents.value);
+    } else if (incidents.reason?.message?.includes('404')) {
+      renderIncidents([]);
     }
-    // Non-404 history errors are silently ignored (results are more important).
 
   } catch (err) {
     showError(`Unexpected error: ${err.message}`);

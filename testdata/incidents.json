@@ -1,0 +1,151 @@
+[
+  {
+    "id": "svc-20260325-2300",
+    "appName": "svc",
+    "openedAt": "2026-03-25T23:00:00Z",
+    "closedAt": "2026-03-26T10:45:00Z",
+    "status": "resolved",
+    "durationMinutes": 705,
+    "peakLevel": "critical",
+    "issues": [
+      "deployer token age 94 days (critical)",
+      "last pipeline status: failed"
+    ],
+    "notes": [
+      {
+        "timestamp": "2026-03-26T00:15:00Z",
+        "content": "Acknowledged. Token expiry was missed — not in rotation calendar. Pipeline failure is a downstream effect of the bad token."
+      },
+      {
+        "timestamp": "2026-03-26T10:30:00Z",
+        "content": "Root cause: deployer SA token was never rotated after initial provisioning (94 days ago). Fix: rotated token, updated OCP_SVC_KUBECONFIG in GitLab CI variables. Lesson: add a 50-day reminder to the team calendar for all CI tokens."
+      },
+      {
+        "timestamp": "2026-03-26T15:43:39Z",
+        "content": "aaaa"
+      }
+    ]
+  },
+  {
+    "id": "crm-20260324-0800",
+    "appName": "crm",
+    "openedAt": "2026-03-24T08:00:00Z",
+    "closedAt": null,
+    "status": "open",
+    "durationMinutes": null,
+    "peakLevel": "warning",
+    "issues": [
+      "image-builder token age 70 days (warning)"
+    ],
+    "notes": [
+      {
+        "timestamp": "2026-03-24T09:00:00Z",
+        "content": "Token rotation scheduled for Friday 2026-03-28. No immediate impact on pipelines."
+      },
+      {
+        "timestamp": "2026-03-26T15:38:45Z",
+        "content": "test"
+      }
+    ]
+  },
+  {
+    "id": "billing-20260325-2315",
+    "appName": "billing",
+    "openedAt": "2026-03-25T23:15:00Z",
+    "closedAt": null,
+    "status": "open",
+    "durationMinutes": null,
+    "peakLevel": "warning",
+    "issues": [
+      "last pipeline status: failed",
+      "all 2 runner(s) stale"
+    ],
+    "notes": [
+      {
+        "timestamp": "2026-03-26T08:00:00Z",
+        "content": "Runners appear offline. Checking the runner host VM."
+      },
+      {
+        "timestamp": "2026-03-26T09:10:00Z",
+        "content": "VM was out of disk space. Cleared /tmp, runners back online. Pipeline re-triggered."
+      }
+    ]
+  },
+  {
+    "id": "auth-20260326-0615",
+    "appName": "auth",
+    "openedAt": "2026-03-26T06:15:00Z",
+    "closedAt": null,
+    "status": "open",
+    "durationMinutes": null,
+    "peakLevel": "error",
+    "issues": [
+      "GitLab API error: API /api/v4/projects/89/pipelines returned 503: service unavailable"
+    ],
+    "notes": [
+      {
+        "timestamp": "2026-03-26T15:39:05Z",
+        "content": "asdfasdf"
+      }
+    ]
+  },
+  {
+    "id": "infra-20260325-1400",
+    "appName": "infra",
+    "openedAt": "2026-03-25T14:00:00Z",
+    "closedAt": null,
+    "status": "open",
+    "durationMinutes": null,
+    "peakLevel": "warning",
+    "issues": [
+      "image-builder SA has no rolebindings",
+      "deployer token secret missing"
+    ],
+    "notes": [
+      {
+        "timestamp": "2026-03-25T15:30:00Z",
+        "content": "Investigate: infra namespace rolebindings were not created during initial setup. Deployer token secret also missing — likely setup was incomplete."
+      }
+    ]
+  },
+  {
+    "id": "newapp-20260320-1000",
+    "appName": "newapp",
+    "openedAt": "2026-03-20T10:00:00Z",
+    "closedAt": "2026-03-21T09:00:00Z",
+    "status": "resolved",
+    "durationMinutes": 1380,
+    "peakLevel": "warning",
+    "issues": [
+      "app has no OCP service accounts (gitlab-only)"
+    ],
+    "notes": [
+      {
+        "timestamp": "2026-03-20T11:00:00Z",
+        "content": "New app onboarding in progress. OCP SAs will be provisioned by platform team."
+      },
+      {
+        "timestamp": "2026-03-21T09:05:00Z",
+        "content": "SAs provisioned: newapp-image-builder, newapp-deployer. Rolebindings applied to newapp-sit and newapp-uat. Resolved."
+      }
+    ]
+  },
+  {
+    "id": "pfm-20260310-1400",
+    "appName": "pfm",
+    "openedAt": "2026-03-10T14:00:00Z",
+    "closedAt": "2026-03-10T14:30:00Z",
+    "status": "resolved",
+    "durationMinutes": 30,
+    "peakLevel": "warning",
+    "issues": [
+      "last pipeline status: failed"
+    ],
+    "notes": [
+      {
+        "timestamp": "2026-03-10T14:20:00Z",
+        "content": "Transient test failure in pfm-sit. Re-triggered pipeline — passed. No action needed."
+      }
+    ]
+  }
+]

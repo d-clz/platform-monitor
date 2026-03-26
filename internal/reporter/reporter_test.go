@@ -2,6 +2,7 @@ package reporter
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -207,6 +208,39 @@ func TestWrite_existingHistoryPreserved(t *testing.T) {
 	}
 	if history[1].Alerts[0].AppName != "pfm" {
 		t.Errorf("new entry should be second; got %q", history[1].Alerts[0].AppName)
+	}
+}
+
+// TestWrite_historyTrimmed verifies that the history file is capped at HistoryLimit
+// and the oldest entries are dropped when the limit is exceeded.
+func TestWrite_historyTrimmed(t *testing.T) {
+	dir := t.TempDir()
+	rep := &Reporter{DataDir: dir, HistoryLimit: 3}
+
+	for i := range 5 {
+		r := evaluator.Results{
+			Timestamp: fixedTime.Add(time.Duration(i) * 15 * time.Minute),
+			Apps: []evaluator.AppResult{
+				{Name: fmt.Sprintf("app%d", i), Level: evaluator.LevelWarning, Issues: []string{"issue"}},
+			},
+			TotalApps:    1,
+			WarningCount: 1,
+		}
+		if err := rep.Write(r); err != nil {
+			t.Fatalf("Write %d failed: %v", i, err)
+		}
+	}
+
+	history := readHistory(t, dir)
+	if len(history) != 3 {
+		t.Fatalf("expected history capped at 3, got %d", len(history))
+	}
+	// Oldest two entries (app0, app1) should have been dropped.
+	if history[0].Alerts[0].AppName != "app2" {
+		t.Errorf("expected oldest kept entry to be app2, got %q", history[0].Alerts[0].AppName)
+	}
+	if history[2].Alerts[0].AppName != "app4" {
+		t.Errorf("expected newest entry to be app4, got %q", history[2].Alerts[0].AppName)
 	}
 }
 
