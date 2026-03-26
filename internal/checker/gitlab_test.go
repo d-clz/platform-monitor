@@ -53,6 +53,10 @@ func jobResponse(stage, createdAt string) glJob {
 	return glJob{Status: "failed", Stage: stage, CreatedAt: createdAt}
 }
 
+func pipelineJobResponse(name, stage, status string, duration float64) glJob {
+	return glJob{Name: name, Stage: stage, Status: status, Duration: duration}
+}
+
 func runnerResponse(id int, description string, active bool, contactedAt string) glRunner {
 	return glRunner{ID: id, Description: description, Active: active, ContactedAt: contactedAt}
 }
@@ -69,6 +73,12 @@ func TestGitLabChecker_Check_success(t *testing.T) {
 		"/api/v4/projects/10/pipelines": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, pipelineResponse(101, "success", "main", pipelineTS, "https://gl/p/101"))
 		},
+		"/api/v4/projects/10/pipelines/101/jobs": func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, []glJob{
+				pipelineJobResponse("test-unit", "test", "success", 45.2),
+				pipelineJobResponse("build-image", "build", "success", 78.5),
+			})
+		},
 		"/api/v4/projects/10/jobs": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, []glJob{jobResponse("build", jobTS)})
 		},
@@ -77,6 +87,11 @@ func TestGitLabChecker_Check_success(t *testing.T) {
 		},
 		"/api/v4/projects/20/pipelines": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, pipelineResponse(202, "failed", "main", pipelineTS, "https://gl/p/202"))
+		},
+		"/api/v4/projects/20/pipelines/202/jobs": func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, []glJob{
+				pipelineJobResponse("test-unit", "test", "failed", 12.1),
+			})
 		},
 		"/api/v4/projects/20/jobs": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, []glJob{jobResponse("test", jobTS), jobResponse("test", jobTS)})
@@ -122,6 +137,11 @@ func TestGitLabChecker_Check_success(t *testing.T) {
 	}
 	if pfm.Runners[0].Stale {
 		t.Error("runner-a should not be stale (contacted 5m ago, threshold 10m)")
+	}
+	if len(pfm.LastPipelineJobs) != 2 {
+		t.Errorf("expected 2 pipeline jobs for pfm, got %d", len(pfm.LastPipelineJobs))
+	} else if pfm.LastPipelineJobs[1].Name != "build-image" {
+		t.Errorf("expected second job name=build-image, got %q", pfm.LastPipelineJobs[1].Name)
 	}
 
 	crm := results[1]
@@ -171,6 +191,9 @@ func TestGitLabChecker_Check_failedJobsFilteredByWindow(t *testing.T) {
 		"/api/v4/projects/10/pipelines": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, pipelineResponse(1, "failed", "main", within, ""))
 		},
+		"/api/v4/projects/10/pipelines/1/jobs": func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, []glJob{})
+		},
 		"/api/v4/projects/10/jobs": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, []glJob{
 				jobResponse("build", within),
@@ -206,6 +229,9 @@ func TestGitLabChecker_Check_staleRunner(t *testing.T) {
 	srv := glMux(map[string]http.HandlerFunc{
 		"/api/v4/projects/10/pipelines": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, pipelineResponse(1, "success", "main", pipelineTS, ""))
+		},
+		"/api/v4/projects/10/pipelines/1/jobs": func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, []glJob{})
 		},
 		"/api/v4/projects/10/jobs": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, []glJob{})
@@ -253,6 +279,9 @@ func TestGitLabChecker_Check_apiErrorCapturedPerApp(t *testing.T) {
 		// Project 20 → fully healthy.
 		"/api/v4/projects/20/pipelines": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, pipelineResponse(202, "success", "main", pipelineTS, ""))
+		},
+		"/api/v4/projects/20/pipelines/202/jobs": func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, []glJob{})
 		},
 		"/api/v4/projects/20/jobs": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, []glJob{})
@@ -316,6 +345,9 @@ func TestGitLabChecker_Check_multipleFailedStages(t *testing.T) {
 		"/api/v4/projects/10/pipelines": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, pipelineResponse(1, "failed", "main", pipelineTS, ""))
 		},
+		"/api/v4/projects/10/pipelines/1/jobs": func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, []glJob{})
+		},
 		"/api/v4/projects/10/jobs": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, []glJob{
 				jobResponse("build", jobTS),
@@ -362,7 +394,7 @@ func TestGitLabChecker_Check_authHeader(t *testing.T) {
 			switch name {
 			case "pipelines":
 				writeJSON(w, pipelineResponse(1, "success", "main", pipelineTS, ""))
-			case "jobs":
+			case "pipeline-jobs", "jobs":
 				writeJSON(w, []glJob{})
 			case "runners":
 				writeJSON(w, []glRunner{})
@@ -371,9 +403,10 @@ func TestGitLabChecker_Check_authHeader(t *testing.T) {
 	}
 
 	srv := glMux(map[string]http.HandlerFunc{
-		"/api/v4/projects/10/pipelines": check("pipelines"),
-		"/api/v4/projects/10/jobs":      check("jobs"),
-		"/api/v4/projects/10/runners":   check("runners"),
+		"/api/v4/projects/10/pipelines":       check("pipelines"),
+		"/api/v4/projects/10/pipelines/1/jobs": check("pipeline-jobs"),
+		"/api/v4/projects/10/jobs":             check("jobs"),
+		"/api/v4/projects/10/runners":          check("runners"),
 	})
 	defer srv.Close()
 

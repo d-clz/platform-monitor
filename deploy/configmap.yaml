@@ -19,10 +19,4 @@ data:
       recipientAddresses: []
 
     gitlabBaseURL: "https://gitlab.example.com"
-
-    apps:
-      - name: pfm
-        gitlabProjectID: 123
-      # Add more apps here:
-      # - name: crm
-      #   gitlabProjectID: 456
+    gitlabGroupID: 0  # set to your GitLab group numeric ID to enable auto-discovery

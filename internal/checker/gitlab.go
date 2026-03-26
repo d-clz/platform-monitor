@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
 	"time"
 
 	"platform-monitor/internal/config"
@@ -153,6 +155,11 @@ type glRunner struct {
 	ContactedAt string `json:"contacted_at"`
 }
 
+type glProject struct {
+	ID   int    `json:"id"`
+	Path string `json:"path"` // slug only (e.g. "pfm"), not the full namespace path
+}
+
 // ---- API call helpers ----
 
 func (c *GitLabChecker) getLastPipeline(ctx context.Context, projectID int) (*PipelineInfo, error) {
@@ -263,6 +270,116 @@ func (c *GitLabChecker) getRunners(ctx context.Context, projectID int, now time.
 	}
 	return result, nil
 }
+
+// ---- Group project discovery ----
+
+// DiscoverGroupProjects fetches all projects in the given GitLab group (and its
+// sub-groups) and returns a map of project path → project ID. It handles
+// GitLab's pagination transparently.
+func (c *GitLabChecker) DiscoverGroupProjects(ctx context.Context, groupID int) (map[string]int, error) {
+	result := make(map[string]int)
+	for page := 1; ; {
+		projects, nextPage, err := c.getProjectsPage(ctx, groupID, page)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range projects {
+			result[p.Path] = p.ID
+		}
+		if nextPage == 0 {
+			break
+		}
+		page = nextPage
+	}
+	return result, nil
+}
+
+// getProjectsPage fetches one page of projects from the group API.
+// Returns the project slice, the next page number (0 = no more pages), and any error.
+func (c *GitLabChecker) getProjectsPage(ctx context.Context, groupID, page int) ([]glProject, int, error) {
+	rawURL := fmt.Sprintf("%s/api/v4/groups/%d/projects?include_subgroups=true&per_page=100&page=%s",
+		c.BaseURL, groupID, strconv.Itoa(page))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, 0, fmt.Errorf("creating request: %w", err)
+	}
+	req.Header.Set("PRIVATE-TOKEN", c.Token)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.Client.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("executing request to groups/%d/projects: %w", groupID, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, 0, fmt.Errorf("API groups/%d/projects returned %d: %s", groupID, resp.StatusCode, string(body))
+	}
+
+	var projects []glProject
+	if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
+		return nil, 0, fmt.Errorf("decoding groups/%d/projects response: %w", groupID, err)
+	}
+
+	nextPage := 0
+	if next := resp.Header.Get("X-Next-Page"); next != "" {
+		nextPage, _ = strconv.Atoi(next)
+	}
+
+	return projects, nextPage, nil
+}
+
+// ---- Project cache ----
+
+// LoadProjectCache reads the cached project map from disk.
+// Returns an empty map if the file is missing or unreadable — the caller
+// falls back to a fresh API fetch.
+func LoadProjectCache(path string) map[string]int {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return make(map[string]int)
+	}
+	var m map[string]int
+	if err := json.Unmarshal(data, &m); err != nil {
+		return make(map[string]int)
+	}
+	return m
+}
+
+// MergeProjectCache merges fresh discoveries into the cached map.
+// Existing entries are never removed (option B: preserve for data-integrity of
+// long-term reports). Returns the merged map and changed=true when new projects
+// were added.
+func MergeProjectCache(cached, fresh map[string]int) (map[string]int, bool) {
+	merged := make(map[string]int, len(cached))
+	for k, v := range cached {
+		merged[k] = v
+	}
+	changed := false
+	for k, v := range fresh {
+		if _, exists := merged[k]; !exists {
+			merged[k] = v
+			changed = true
+		}
+	}
+	return merged, changed
+}
+
+// SaveProjectCache writes the project map to disk as JSON.
+func SaveProjectCache(path string, projects map[string]int) error {
+	data, err := json.MarshalIndent(projects, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshalling project cache: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("writing project cache: %w", err)
+	}
+	return nil
+}
+
+// ---- HTTP helper ----
 
 func (c *GitLabChecker) get(ctx context.Context, path string, params url.Values, out any) error {
 	rawURL := c.BaseURL + path

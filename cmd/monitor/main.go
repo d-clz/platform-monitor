@@ -25,6 +25,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -85,7 +87,7 @@ func run() error {
 	}
 	log.Printf("OCP check complete: %d app(s) discovered", len(ocpStatuses))
 
-	// ---- GitLab check ----
+	// ---- GitLab project discovery ----
 	glChecker := &checker.GitLabChecker{
 		Client:             httpClient,
 		BaseURL:            cfg.GitLabBaseURL,
@@ -93,7 +95,37 @@ func run() error {
 		FailureWindow:      cfg.Thresholds.PipelineFailureWindow.Duration,
 		RunnerStalenessMin: cfg.Thresholds.RunnerStalenessMin,
 	}
-	glStatuses, err := glChecker.Check(ctx, cfg.Apps)
+
+	cachePath := filepath.Join(dataDir, "gitlab-projects-cache.json")
+	cached := checker.LoadProjectCache(cachePath)
+
+	var apps []config.App
+	if cfg.GitLabGroupID != 0 {
+		fresh, discErr := glChecker.DiscoverGroupProjects(ctx, cfg.GitLabGroupID)
+		if discErr != nil {
+			// Non-fatal: fall back to the cached list so existing apps still run.
+			log.Printf("WARNING: GitLab group discovery failed, using cached project list: %v", discErr)
+			fresh = cached
+		}
+
+		merged, changed := checker.MergeProjectCache(cached, fresh)
+		if changed {
+			if err := checker.SaveProjectCache(cachePath, merged); err != nil {
+				log.Printf("WARNING: saving project cache: %v", err)
+			}
+			log.Printf("GitLab project cache updated: %d project(s) total", len(merged))
+		}
+
+		apps = make([]config.App, 0, len(merged))
+		for name, id := range merged {
+			apps = append(apps, config.App{Name: name, GitLabProjectID: id})
+		}
+		sort.Slice(apps, func(i, j int) bool { return apps[i].Name < apps[j].Name })
+	}
+	log.Printf("GitLab discovery complete: %d project(s) to check", len(apps))
+
+	// ---- GitLab check ----
+	glStatuses, err := glChecker.Check(ctx, apps)
 	if err != nil {
 		log.Printf("WARNING: GitLab check failed: %v", err)
 		glStatuses = nil

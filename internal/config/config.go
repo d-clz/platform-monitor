@@ -1,8 +1,8 @@
 // Package config loads and validates the monitoring configuration from a YAML file.
 //
-// The config file defines thresholds, alerting settings, and the GitLab-to-app
-// mapping. OCP resources (SAs, tokens, bindings) are auto-discovered at runtime
-// and are NOT part of this config.
+// The config file defines thresholds, alerting settings, and the GitLab group to
+// discover projects from. OCP resources (SAs, tokens, rolebindings) and GitLab
+// projects are both auto-discovered at runtime and are NOT part of this config.
 package config
 
 import (
@@ -16,10 +16,10 @@ import (
 
 // Config is the top-level monitoring configuration.
 type Config struct {
-	Thresholds   Thresholds   `yaml:"thresholds"`
-	Alerting     Alerting     `yaml:"alerting"`
-	GitLabBaseURL string      `yaml:"gitlabBaseURL"`
-	Apps         []App        `yaml:"apps"`
+	Thresholds    Thresholds `yaml:"thresholds"`
+	Alerting      Alerting   `yaml:"alerting"`
+	GitLabBaseURL string     `yaml:"gitlabBaseURL"`
+	GitLabGroupID int        `yaml:"gitlabGroupID"` // numeric group or sub-group ID to auto-discover projects from
 }
 
 // Thresholds defines the health-check boundaries.
@@ -39,10 +39,11 @@ type Alerting struct {
 	RecipientAddresses []string `yaml:"recipientAddresses"`
 }
 
-// App maps an application name to its GitLab project.
+// App pairs an application name with its GitLab project ID.
+// Populated at runtime from group discovery — not parsed from the config YAML.
 type App struct {
-	Name             string `yaml:"name"`
-	GitLabProjectID  int    `yaml:"gitlabProjectID"`
+	Name            string
+	GitLabProjectID int
 }
 
 // Duration wraps time.Duration for YAML unmarshalling from strings like "24h".
@@ -129,22 +130,6 @@ func validate(cfg *Config) error {
 		errs = append(errs, errors.New("runnerStalenessMinutes must be >= 1"))
 	}
 
-	seen := make(map[string]bool)
-	for i, app := range cfg.Apps {
-		if app.Name == "" {
-			errs = append(errs, fmt.Errorf("apps[%d]: name is required", i))
-			continue
-		}
-		if seen[app.Name] {
-			errs = append(errs, fmt.Errorf("apps[%d]: duplicate app name %q", i, app.Name))
-		}
-		seen[app.Name] = true
-
-		if app.GitLabProjectID <= 0 {
-			errs = append(errs, fmt.Errorf("apps[%d] (%s): gitlabProjectID must be > 0", i, app.Name))
-		}
-	}
-
 	if cfg.Alerting.EnableEmail {
 		if cfg.Alerting.SMTPHost == "" {
 			errs = append(errs, errors.New("alerting.smtpHost is required when email is enabled"))
@@ -160,11 +145,3 @@ func validate(cfg *Config) error {
 	return errors.Join(errs...)
 }
 
-// GitLabAppMap returns a map of app name → GitLab project ID for quick lookups.
-func (c *Config) GitLabAppMap() map[string]int {
-	m := make(map[string]int, len(c.Apps))
-	for _, app := range c.Apps {
-		m[app.Name] = app.GitLabProjectID
-	}
-	return m
-}

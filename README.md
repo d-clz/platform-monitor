@@ -60,13 +60,10 @@ alerting:
   recipientAddresses: []
 
 gitlabBaseURL: "https://gitlab.example.com"
-
-apps:
-  - name: pfm
-    gitlabProjectID: 123
-  - name: crm
-    gitlabProjectID: 456
+gitlabGroupID: 42              # numeric ID of the GitLab group (or sub-group) to monitor
 ```
+
+Projects are auto-discovered from the group on every cron run and cached in `gitlab-projects-cache.json`. New projects are detected automatically; removed projects are intentionally retained in the cache to preserve long-term report continuity.
 
 ---
 
@@ -110,6 +107,7 @@ All files are written to `DATA_DIR` (PVC in OCP, `./testdata` locally).
 | `metrics-index.json` | Monitor | List of cold metric archive files |
 | `job-metrics.json` | Monitor | Weekly per-job aggregates: runs, failures, total duration — capped at 52 weeks |
 | `job-metrics-state.json` | Monitor | Last-seen pipeline ID per app (prevents double-counting across cron polls) |
+| `gitlab-projects-cache.json` | Monitor | Cached group project discovery: path → ID map, append-only |
 | `dashboard.log` | Dashboard | Server log (when `LOG_FILE` is set) |
 
 ---
