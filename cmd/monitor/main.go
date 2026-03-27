@@ -26,7 +26,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -96,34 +95,41 @@ func run() error {
 		RunnerStalenessMin: cfg.Thresholds.RunnerStalenessMin,
 	}
 
+	// ---- GitLab per-app repo discovery ----
+	// For each app in config, fetch its repos from the declared sub-group,
+	// merge with the on-disk cache (append-only), then check all repos.
 	cachePath := filepath.Join(dataDir, "gitlab-projects-cache.json")
-	cached := checker.LoadAppReposCache(cachePath)
+	cache := checker.LoadAppReposCache(cachePath)
 
 	var appRepos []checker.AppRepos
-	if cfg.GitLabGroupID != 0 {
-		fresh, discErr := glChecker.DiscoverAppRepos(ctx, cfg.GitLabGroupID)
+	cacheChanged := false
+
+	for _, app := range cfg.Apps {
+		fresh, discErr := glChecker.GetAppRepos(ctx, app.GitLabGroupID)
 		if discErr != nil {
-			// Non-fatal: fall back to the cached list so existing apps still run.
-			log.Printf("WARNING: GitLab group discovery failed, using cached project list: %v", discErr)
-			fresh = cached
+			// Non-fatal: use cached repos so the app still runs against stale data.
+			log.Printf("WARNING: repo discovery for %q (group %d) failed, using cache: %v",
+				app.Name, app.GitLabGroupID, discErr)
+			fresh = cache[app.Name]
 		}
 
-		merged, changed := checker.MergeAppReposCache(cached, fresh)
+		merged, changed := checker.MergeAppReposCache(
+			map[string][]checker.RepoInfo{app.Name: cache[app.Name]},
+			map[string][]checker.RepoInfo{app.Name: fresh},
+		)
 		if changed {
-			if err := checker.SaveAppReposCache(cachePath, merged); err != nil {
-				log.Printf("WARNING: saving project cache: %v", err)
-			}
-			log.Printf("GitLab project cache updated: %d app(s) total", len(merged))
+			cache[app.Name] = merged[app.Name]
+			cacheChanged = true
 		}
 
-		appNames := make([]string, 0, len(merged))
-		for name := range merged {
-			appNames = append(appNames, name)
+		appRepos = append(appRepos, checker.AppRepos{AppName: app.Name, Repos: cache[app.Name]})
+	}
+
+	if cacheChanged {
+		if err := checker.SaveAppReposCache(cachePath, cache); err != nil {
+			log.Printf("WARNING: saving project cache: %v", err)
 		}
-		sort.Strings(appNames)
-		for _, name := range appNames {
-			appRepos = append(appRepos, checker.AppRepos{AppName: name, Repos: merged[name]})
-		}
+		log.Printf("GitLab project cache updated: %d app(s)", len(cache))
 	}
 	log.Printf("GitLab discovery complete: %d app(s) to check", len(appRepos))
 
