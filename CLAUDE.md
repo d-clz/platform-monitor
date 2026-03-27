@@ -20,7 +20,7 @@ A monitoring system for a Platform CI pipeline running on OpenShift (OCP). It ch
 | Decision | Choice | Rationale |
 |---|---|---|
 | OCP resource discovery | Auto-discover SAs, tokens, rolebindings on every run | No need to manually list apps or target namespaces |
-| Config file content | Only thresholds, alerting settings, GitLab base URL, and app→GitLab project ID mapping | OCP side is fully auto-discovered |
+| Config file content | Only thresholds, alerting settings, GitLab base URL, and root group ID | Both OCP and GitLab are fully auto-discovered |
 | Config format | YAML via `gopkg.in/yaml.v3` | User preference |
 | Kube API access | Raw `net/http` + `encoding/json` | Avoids massive `client-go` dependency tree; we only do read-only list operations |
 | GitLab API access | Raw `net/http` + `encoding/json` | Same approach, self-hosted GitLab REST API |
@@ -58,13 +58,12 @@ alerting:
   recipientAddresses: []
 
 gitlabBaseURL: "https://gitlab.example.com"
-
-apps:
-  - name: pfm
-    gitlabProjectID: 123
-  - name: crm
-    gitlabProjectID: 456
+gitlabGroupID: 5   # numeric ID of the root GitLab group; sub-groups become apps, projects become repos
 ```
+
+**No `apps` list.** Apps and repos are fully auto-discovered at runtime:
+- Root group → sub-groups (one per app) → projects (repos per app)
+- Cache persisted to `gitlab-projects-cache.json` on the PVC; append-only (repos are never removed)
 
 ## OCP checker discovery logic
 
@@ -72,12 +71,22 @@ apps:
 2. List all Secrets in `platform-cicd` → match by `kubernetes.io/service-account.name` annotation, extract `creationTimestamp` for token age
 3. List all RoleBindings cluster-wide → filter by subject kind=ServiceAccount, subject namespace=`platform-cicd`, strip suffix to get app name, group by namespace
 
+## GitLab discovery model
+
+Two-level discovery on every run:
+1. `GET /api/v4/groups/:rootID/subgroups` (paginated) → one sub-group per app
+2. `GET /api/v4/groups/:subgroupID/projects` (paginated) → one or more repos per app
+
+Results merged with the on-disk cache (`gitlab-projects-cache.json`) using append-only logic — repos already in cache are never removed. `changed=true` triggers a cache write.
+
+Per-repo check: last pipeline + jobs via `GET /api/v4/projects/:id/pipelines` and `/jobs`. App-level health = worst status across all repos.
+
 ## App merge logic (evaluator)
 
 Three possible states per app:
 - **OCP + GitLab**: Full checks on both sides
-- **OCP-only**: App discovered in cluster but no GitLab project ID in config — OCP checks run, GitLab skipped
-- **GitLab-only**: App in config but no SAs found in cluster — flagged as warning
+- **OCP-only**: App in cluster but not found in GitLab discovery — OCP checks run, GitLab skipped
+- **GitLab-only**: App in GitLab discovery but no SAs found in cluster — flagged as warning
 
 ## Dashboard output
 
@@ -115,39 +124,32 @@ platform-ci-monitor/
 └── CLAUDE.md
 ```
 
+## Known gaps / improvement backlog
+
+- **OCP errors are run-fatal**: `ocpChecker.Check()` returns a single error that aborts OCP data for all apps. There is no per-app OCP error field — a single unreachable namespace kills the whole OCP surface. Future improvement: make `OCPAppStatus` carry an `Error string` field so partial failures are surfaced per-app at `LevelError` instead of silently dropping all OCP data.
+
 ## Build plan and progress
 
 | Step | Package | Status |
 |---|---|---|
 | 1 | `go.mod` + project skeleton | ✅ Done |
-| 2 | `internal/config` | ✅ Done — 12 tests, 88.1% coverage |
-| 3 | `internal/checker/ocp` | ✅ Done — 8 tests, awaiting user confirmation |
-| 4 | `internal/checker/gitlab` | ⬜ Next |
-| 5 | `internal/evaluator` | ⬜ |
-| 6 | `internal/reporter` | ⬜ |
-| 7 | `internal/alerter` | ⬜ |
-| 8 | `cmd/monitor/main.go` | ⬜ |
-| 9 | `web/` (dashboard HTML/JS) | ⬜ |
-| 10 | `deploy/` (k8s manifests) | ⬜ |
-| 11 | `Dockerfile` | ⬜ |
-
-## Step 4 — GitLab checker design (ready to build)
-
-Queries self-hosted GitLab REST API for each app in the config:
-- `GET /api/v4/projects/:id/pipelines?ref=<default_branch>&per_page=1` → last pipeline status + timestamp
-- `GET /api/v4/projects/:id/jobs?per_page=100` → filter by `status=failed` within `pipelineFailureWindow`
-- `GET /api/v4/runners?type=project_type` → runner availability, `contacted_at` freshness
-
-Output: per-app `GitLabAppStatus` with last pipeline info, failed job count by stage, runner status.
-
-Same pattern as OCP checker: `HTTPClient` interface, mock HTTP server in tests.
+| 2 | `internal/config` | ✅ Done |
+| 3 | `internal/checker/ocp` | ✅ Done |
+| 4 | `internal/checker/gitlab` | ✅ Done — multi-repo discovery + cache |
+| 5 | `internal/evaluator` | ✅ Done |
+| 6 | `internal/reporter` | ✅ Done — metrics, job-metrics, rotation |
+| 7 | `internal/alerter` | ✅ Done |
+| 8 | `cmd/monitor/main.go` | ✅ Done |
+| 9 | `web/` (dashboard HTML/JS) | ✅ Done — multi-repo expand UI |
+| 10 | `deploy/` (k8s manifests) | ✅ Done |
+| 11 | `Dockerfile` | ✅ Done |
 
 ## Deployment topology
 
 All resources in `platform-cicd` namespace:
-- **ConfigMap `ci-monitor-config`** — app registry + thresholds + `enableEmail: false`
+- **ConfigMap `ci-monitor-config`** — thresholds + `gitlabGroupID` + `enableEmail: false`
 - **Secret `ci-monitor-secrets`** — GitLab PAT + SMTP credentials
-- **PVC `ci-monitor-data`** (1Gi) — `results.json` (overwritten) + `history.json` (append)
+- **PVC `ci-monitor-data`** (1Gi) — `results.json`, `metrics.json`, `job-metrics.json`, `incidents.json`, `gitlab-projects-cache.json`
 - **CronJob `ci-monitor`** — `*/15 * * * *`, mounts ConfigMap + Secret + PVC
 - **ServiceAccount `ci-monitor-sa`** — read-only ClusterRole for SAs, Secrets (metadata), RoleBindings
 - **Deployment `ci-dashboard`** — nginx serving static HTML, PVC mounted read-only
@@ -161,6 +163,10 @@ go test ./...        # run all tests
 go test ./internal/config/ -v        # test config package
 go test ./internal/checker/ -v       # test checker package
 go vet ./...         # lint
+
+# Run dashboard locally against testdata
+WEB_DIR=./web DATA_DIR=./testdata go run ./cmd/dashboard
+# then open http://localhost:8080
 ```
 
 ## Dependencies
