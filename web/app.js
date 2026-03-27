@@ -74,51 +74,153 @@ function jobBadgeClass(status) {
   return map[status] || 'warning';
 }
 
-function renderJobExpandRow(app) {
+function buildJobTable(jobs) {
+  const table = document.createElement('table');
+  table.className = 'job-table';
+  table.innerHTML = '<thead><tr><th>Job</th><th>Stage</th><th>Status</th><th>Duration</th></tr></thead>';
+  const tbody = document.createElement('tbody');
+  jobs.forEach(j => {
+    const row = document.createElement('tr');
+    const nameTd = document.createElement('td');
+    nameTd.textContent = j.name;
+    const stageTd = document.createElement('td');
+    stageTd.className = 'job-stage';
+    stageTd.textContent = j.stage;
+    const statusTd = document.createElement('td');
+    const b = document.createElement('span');
+    b.className = `badge ${jobBadgeClass(j.status)}`;
+    b.textContent = j.status;
+    statusTd.appendChild(b);
+    const durTd = document.createElement('td');
+    durTd.className = 'job-dur';
+    durTd.textContent = fmtJobDuration(j.duration);
+    row.appendChild(nameTd);
+    row.appendChild(stageTd);
+    row.appendChild(statusTd);
+    row.appendChild(durTd);
+    tbody.appendChild(row);
+  });
+  table.appendChild(tbody);
+  return table;
+}
+
+// renderJobExpandRow takes a repo object (has lastPipelineJobs), colSpan for outer table.
+function renderJobExpandRow(repo, colSpan) {
   const tr = document.createElement('tr');
   tr.className = 'job-expand-row';
   const cell = document.createElement('td');
-  cell.colSpan = 10;
+  cell.colSpan = colSpan ?? 10;
 
   const wrap = document.createElement('div');
   wrap.className = 'job-expand-wrap';
 
-  const jobs = app.gitlab?.lastPipelineJobs;
+  const jobs = repo?.lastPipelineJobs;
   if (!jobs || jobs.length === 0) {
     const msg = document.createElement('span');
     msg.className = 'job-empty';
     msg.textContent = 'No job data for this pipeline.';
     wrap.appendChild(msg);
   } else {
-    const table = document.createElement('table');
-    table.className = 'job-table';
-    table.innerHTML = '<thead><tr><th>Job</th><th>Stage</th><th>Status</th><th>Duration</th></tr></thead>';
-    const tbody = document.createElement('tbody');
-    jobs.forEach(j => {
-      const row = document.createElement('tr');
-      const nameTd = document.createElement('td');
-      nameTd.textContent = j.name;
-      const stageTd = document.createElement('td');
-      stageTd.className = 'job-stage';
-      stageTd.textContent = j.stage;
-      const statusTd = document.createElement('td');
-      const b = document.createElement('span');
-      b.className = `badge ${jobBadgeClass(j.status)}`;
-      b.textContent = j.status;
-      statusTd.appendChild(b);
-      const durTd = document.createElement('td');
-      durTd.className = 'job-dur';
-      durTd.textContent = fmtJobDuration(j.duration);
-      row.appendChild(nameTd);
-      row.appendChild(stageTd);
-      row.appendChild(statusTd);
-      row.appendChild(durTd);
-      tbody.appendChild(row);
-    });
-    table.appendChild(tbody);
-    wrap.appendChild(table);
+    wrap.appendChild(buildJobTable(jobs));
   }
 
+  cell.appendChild(wrap);
+  tr.appendChild(cell);
+  return tr;
+}
+
+// renderRepoExpandRow shows repos in a sub-table; each repo row has a job expand toggle.
+function renderRepoExpandRow(repos) {
+  const tr = document.createElement('tr');
+  tr.className = 'repo-expand-row';
+  const cell = document.createElement('td');
+  cell.colSpan = 10;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'repo-expand-wrap';
+
+  const table = document.createElement('table');
+  table.className = 'repo-table';
+  table.innerHTML = '<thead><tr><th>Repo</th><th>Pipeline</th><th>Failed Jobs</th></tr></thead>';
+  const tbody = document.createElement('tbody');
+
+  repos.forEach(repo => {
+    const repoTr = document.createElement('tr');
+    repoTr.className = 'repo-row';
+
+    const nameTd = document.createElement('td');
+    const hasJobs = Array.isArray(repo.lastPipelineJobs) && repo.lastPipelineJobs.length > 0;
+    if (hasJobs) {
+      const toggle = document.createElement('span');
+      toggle.className = 'row-toggle';
+      toggle.textContent = '▶';
+      nameTd.appendChild(toggle);
+      nameTd.appendChild(document.createTextNode(repo.repoName));
+      nameTd.style.cursor = 'pointer';
+      let jobExpandTr = null;
+      nameTd.addEventListener('click', () => {
+        if (jobExpandTr) {
+          jobExpandTr.remove();
+          jobExpandTr = null;
+          toggle.textContent = '▶';
+        } else {
+          jobExpandTr = renderJobExpandRow(repo, 3);
+          repoTr.insertAdjacentElement('afterend', jobExpandTr);
+          toggle.textContent = '▼';
+        }
+      });
+    } else {
+      nameTd.textContent = repo.repoName;
+    }
+    repoTr.appendChild(nameTd);
+
+    const pipeTd = document.createElement('td');
+    if (repo.lastPipeline) {
+      const p = repo.lastPipeline;
+      pipeTd.appendChild(badge(pipelineLevelFor(p.status)));
+      if (p.webURL) {
+        const a = document.createElement('a');
+        a.className = 'pipeline-link';
+        a.href = p.webURL;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = ` #${p.id} (${p.ref})`;
+        pipeTd.appendChild(a);
+      } else {
+        pipeTd.appendChild(document.createTextNode(` #${p.id}`));
+      }
+    } else if (repo.error) {
+      pipeTd.appendChild(pill('error', 'missing'));
+    } else {
+      pipeTd.textContent = '—';
+    }
+    repoTr.appendChild(pipeTd);
+
+    const failedTd = document.createElement('td');
+    const byStage = repo.failedJobsByStage || {};
+    const stageEntries = Object.entries(byStage);
+    if (stageEntries.length === 0) {
+      failedTd.textContent = repo.error ? '—' : '0';
+    } else {
+      const fw = document.createElement('div');
+      fw.className = 'ns-list';
+      stageEntries.forEach(([stage, count]) => {
+        const tag = document.createElement('span');
+        tag.className = 'ns-tag';
+        tag.style.background = '#3b1c1c';
+        tag.style.color = '#fca5a5';
+        tag.textContent = `${stage}: ${count}`;
+        fw.appendChild(tag);
+      });
+      failedTd.appendChild(fw);
+    }
+    repoTr.appendChild(failedTd);
+
+    tbody.appendChild(repoTr);
+  });
+
+  table.appendChild(tbody);
+  wrap.appendChild(table);
   cell.appendChild(wrap);
   tr.appendChild(cell);
   return tr;
@@ -170,22 +272,32 @@ function renderNamespaces(ocp) {
   return wrap;
 }
 
+function worstRepoByPipeline(repos) {
+  const rank = { failed: 4, canceled: 3, running: 2, success: 1 };
+  return repos.reduce((worst, r) => {
+    const wr = rank[worst?.lastPipeline?.status] ?? 0;
+    const rr = rank[r?.lastPipeline?.status] ?? 0;
+    return rr > wr ? r : worst;
+  }, repos[0]);
+}
+
 function renderPipeline(gl) {
-  if (!gl || !gl.lastPipeline) return document.createTextNode('—');
-  const p = gl.lastPipeline;
+  if (!gl || !gl.repos || gl.repos.length === 0) return document.createTextNode('—');
+  const repo = worstRepoByPipeline(gl.repos);
+  if (!repo || !repo.lastPipeline) return document.createTextNode('—');
+  const p = repo.lastPipeline;
   const wrap = document.createElement('div');
-  const b = badge(pipelineLevelFor(p.status));
-  wrap.appendChild(b);
+  wrap.appendChild(badge(pipelineLevelFor(p.status)));
   if (p.webURL) {
     const a = document.createElement('a');
     a.className = 'pipeline-link';
     a.href = p.webURL;
     a.target = '_blank';
     a.rel = 'noopener';
-    a.textContent = ` #${p.id} (${p.ref})`;
+    a.textContent = gl.repos.length > 1 ? ` #${p.id} (${repo.repoName})` : ` #${p.id} (${p.ref})`;
     wrap.appendChild(a);
   } else {
-    wrap.appendChild(document.createTextNode(` #${p.id} (${p.ref})`));
+    wrap.appendChild(document.createTextNode(` #${p.id}`));
   }
   return wrap;
 }
@@ -197,9 +309,14 @@ function pipelineLevelFor(status) {
 }
 
 function renderFailedJobs(gl) {
-  if (!gl) return document.createTextNode('—');
-  const byStage = gl.failedJobsByStage || {};
-  const entries = Object.entries(byStage);
+  if (!gl || !gl.repos) return document.createTextNode('—');
+  const combined = {};
+  gl.repos.forEach(repo => {
+    Object.entries(repo.failedJobsByStage || {}).forEach(([stage, count]) => {
+      combined[stage] = (combined[stage] || 0) + count;
+    });
+  });
+  const entries = Object.entries(combined);
   if (entries.length === 0) return document.createTextNode('0');
   const wrap = document.createElement('div');
   wrap.className = 'ns-list';
@@ -214,14 +331,8 @@ function renderFailedJobs(gl) {
   return wrap;
 }
 
-function renderRunners(gl) {
-  if (!gl) return document.createTextNode('—');
-  if (gl.runnerCount === 0) return pill('none', 'missing');
-  const cls = gl.staleRunnerCount === gl.runnerCount ? 'warn' : 'present';
-  const wrap = document.createElement('div');
-  wrap.className = 'sa-status';
-  wrap.appendChild(pill(`${gl.runnerCount - gl.staleRunnerCount}/${gl.runnerCount} active`, cls));
-  return wrap;
+function renderRunners(_gl) {
+  return document.createTextNode('—');
 }
 
 function renderIssues(issues) {
@@ -240,13 +351,15 @@ function renderAppRow(app) {
   const tr = document.createElement('tr');
   tr.className = `row-${app.level}`;
 
-  // App name cell — with expand toggle when job data is available.
-  const hasJobs = Array.isArray(app.gitlab?.lastPipelineJobs);
-  const nameTd  = document.createElement('td');
+  const repos = app.gitlab?.repos ?? [];
+  const multiRepo = repos.length > 1;
+  // Expandable if: multi-repo, or single-repo with job data.
+  const expandable = multiRepo || (repos.length === 1 && Array.isArray(repos[0]?.lastPipelineJobs));
+  const nameTd = document.createElement('td');
 
-  if (hasJobs) {
+  if (expandable) {
     const toggle = document.createElement('span');
-    toggle.className  = 'row-toggle';
+    toggle.className = 'row-toggle';
     toggle.textContent = '▶';
     nameTd.appendChild(toggle);
     nameTd.appendChild(document.createTextNode(app.name));
@@ -259,7 +372,7 @@ function renderAppRow(app) {
         expandRow = null;
         toggle.textContent = '▶';
       } else {
-        expandRow = renderJobExpandRow(app);
+        expandRow = multiRepo ? renderRepoExpandRow(repos) : renderJobExpandRow(repos[0]);
         tr.insertAdjacentElement('afterend', expandRow);
         toggle.textContent = '▼';
       }

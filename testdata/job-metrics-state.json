@@ -1,6 +1,10 @@
 {
-  "pfm": 1247,
-  "crm": 892,
-  "hrm": 634,
-  "fin": 1089
+  "billing/billing":      1887,
+  "crm/crm-backend":       892,
+  "crm/crm-frontend":      445,
+  "fin/fin":              1089,
+  "hrm/hrm":               634,
+  "newapp/newapp":          42,
+  "pfm/pfm-api":          1247,
+  "pfm/pfm-service":      1189
 }

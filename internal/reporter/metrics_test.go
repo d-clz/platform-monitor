@@ -106,7 +106,7 @@ func TestAppendMetrics_accumulates(t *testing.T) {
 }
 
 // TestAppendMetrics_capturesGitLabFields verifies that pipeline status, duration,
-// failed jobs, and runner counts are stored correctly.
+// and failed jobs are stored correctly from the repos structure.
 func TestAppendMetrics_capturesGitLabFields(t *testing.T) {
 	dir := t.TempDir()
 	rep := &Reporter{DataDir: dir}
@@ -118,14 +118,17 @@ func TestAppendMetrics_capturesGitLabFields(t *testing.T) {
 				Name:  "pfm",
 				Level: evaluator.LevelWarning,
 				GitLab: &evaluator.GitLabSummary{
-					LastPipeline: &checker.PipelineInfo{
-						ID:       101,
-						Status:   "failed",
-						Duration: 300,
+					Repos: []evaluator.RepoSummary{
+						{
+							RepoName: "pfm-api",
+							LastPipeline: &checker.PipelineInfo{
+								ID:       101,
+								Status:   "failed",
+								Duration: 300,
+							},
+							FailedJobsByStage: map[string]int{"test": 2, "deploy": 1},
+						},
 					},
-					FailedJobsByStage: map[string]int{"test": 2, "deploy": 1},
-					RunnerCount:       5,
-					StaleRunnerCount:  2,
 				},
 			},
 		},
@@ -151,8 +154,9 @@ func TestAppendMetrics_capturesGitLabFields(t *testing.T) {
 	if e.FailedJobs != 3 {
 		t.Errorf("FailedJobs=%d, want 3 (2+1)", e.FailedJobs)
 	}
-	if e.RunnersOnline != 3 {
-		t.Errorf("RunnersOnline=%d, want 3 (5-2)", e.RunnersOnline)
+	// Runners are tracked separately; always 0 until runner feature is implemented.
+	if e.RunnersOnline != 0 {
+		t.Errorf("RunnersOnline=%d, want 0 (runners deferred)", e.RunnersOnline)
 	}
 }
 
@@ -302,8 +306,9 @@ func TestBuildMetricEntries_gitLabNoPipeline(t *testing.T) {
 				Name:  "pfm",
 				Level: evaluator.LevelOK,
 				GitLab: &evaluator.GitLabSummary{
-					LastPipeline: nil, // no pipeline yet
-					RunnerCount:  3,
+					Repos: []evaluator.RepoSummary{
+						{RepoName: "pfm-api", LastPipeline: nil},
+					},
 				},
 			},
 		},
@@ -313,8 +318,8 @@ func TestBuildMetricEntries_gitLabNoPipeline(t *testing.T) {
 	if e.PipelineStatus != "" {
 		t.Errorf("expected empty PipelineStatus when no pipeline, got %q", e.PipelineStatus)
 	}
-	if e.RunnersOnline != 3 {
-		t.Errorf("expected RunnersOnline=3, got %d", e.RunnersOnline)
+	if e.RunnersOnline != 0 {
+		t.Errorf("expected RunnersOnline=0 (runners deferred), got %d", e.RunnersOnline)
 	}
 }
 

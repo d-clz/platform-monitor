@@ -363,6 +363,30 @@
     .job-dur { color: #64748b; }
     .job-stage { color: #475569; }
 
+    /* ---- Repo expand (multi-repo apps) ---- */
+    .repo-expand-row > td {
+      background: #0a1120;
+      padding: 0;
+      border-bottom: 1px solid #1e293b;
+    }
+    .repo-expand-wrap { padding: 8px 16px 14px 48px; }
+
+    .repo-table { border-collapse: collapse; min-width: 480px; }
+    .repo-table th {
+      padding: 4px 14px;
+      font-size: 10px;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-bottom: 1px solid #1e293b;
+      text-align: left;
+      white-space: nowrap;
+    }
+    .repo-table td { padding: 6px 14px; font-size: 12px; vertical-align: middle; }
+    .repo-table tr:hover td { background: #0f1a2e; }
+    .repo-row td:first-child { white-space: nowrap; }
+
+
     .badge.running { background: #0c2340; color: #93c5fd; }
     .badge.skipped { background: #1e293b; color: #475569; }
     .badge.pending, .badge.created { background: #1c1a03; color: #fde68a; }

@@ -4,8 +4,10 @@
     {
       "name": "pfm",
       "source": "ocp_gitlab",
-      "level": "ok",
-      "issues": [],
+      "level": "warning",
+      "issues": [
+        "pfm-service: last pipeline status: failed"
+      ],
       "ocp": {
         "imageBuilderSAPresent": true,
         "deployerSAPresent": true,
@@ -14,16 +16,48 @@
         "bindingNamespaces": ["pfm-sit", "pfm-uat", "pfm-prod"]
       },
       "gitlab": {
-        "lastPipeline": {
-          "id": 4821,
-          "status": "success",
-          "ref": "main",
-          "createdAt": "2026-03-26T09:55:12Z",
-          "webURL": "https://gitlab.example.com/platform/pfm/-/pipelines/4821"
-        },
-        "failedJobsByStage": {},
-        "runnerCount": 3,
-        "staleRunnerCount": 0
+        "repos": [
+          {
+            "repoName": "pfm-api",
+            "projectID": 101,
+            "lastPipeline": {
+              "id": 1247,
+              "status": "success",
+              "ref": "main",
+              "createdAt": "2026-03-26T09:55:12Z",
+              "webURL": "https://gitlab.example.com/platform/pfm/pfm-api/-/pipelines/1247",
+              "duration": 412
+            },
+            "lastPipelineJobs": [
+              { "name": "lint",        "stage": "lint",   "status": "success", "duration": 9.8   },
+              { "name": "test-unit",   "stage": "test",   "status": "success", "duration": 137.0 },
+              { "name": "build-image", "stage": "build",  "status": "success", "duration": 154.0 },
+              { "name": "push-image",  "stage": "build",  "status": "success", "duration": 42.0  },
+              { "name": "deploy-sit",  "stage": "deploy", "status": "success", "duration": 69.0  }
+            ],
+            "failedJobsByStage": {}
+          },
+          {
+            "repoName": "pfm-service",
+            "projectID": 102,
+            "lastPipeline": {
+              "id": 1189,
+              "status": "failed",
+              "ref": "main",
+              "createdAt": "2026-03-26T08:12:40Z",
+              "webURL": "https://gitlab.example.com/platform/pfm/pfm-service/-/pipelines/1189",
+              "duration": 198
+            },
+            "lastPipelineJobs": [
+              { "name": "lint",        "stage": "lint",   "status": "success", "duration": 11.2  },
+              { "name": "test-unit",   "stage": "test",   "status": "failed",  "duration": 84.0  },
+              { "name": "build-image", "stage": "build",  "status": "skipped", "duration": 0     },
+              { "name": "push-image",  "stage": "build",  "status": "skipped", "duration": 0     },
+              { "name": "deploy-sit",  "stage": "deploy", "status": "skipped", "duration": 0     }
+            ],
+            "failedJobsByStage": { "test": 1 }
+          }
+        ]
       }
     },
     {
@@ -31,7 +65,8 @@
       "source": "ocp_gitlab",
       "level": "warning",
       "issues": [
-        "image-builder token age 70 days (warning)"
+        "image-builder token age 70 days (warning)",
+        "crm-frontend: last pipeline status: failed"
       ],
       "ocp": {
         "imageBuilderSAPresent": true,
@@ -41,47 +76,153 @@
         "bindingNamespaces": ["crm-sit", "crm-uat"]
       },
       "gitlab": {
-        "lastPipeline": {
-          "id": 3310,
-          "status": "success",
-          "ref": "main",
-          "createdAt": "2026-03-26T08:10:45Z",
-          "webURL": "https://gitlab.example.com/platform/crm/-/pipelines/3310"
-        },
-        "failedJobsByStage": {},
-        "runnerCount": 2,
-        "staleRunnerCount": 0
+        "repos": [
+          {
+            "repoName": "crm-backend",
+            "projectID": 201,
+            "lastPipeline": {
+              "id": 892,
+              "status": "success",
+              "ref": "main",
+              "createdAt": "2026-03-26T08:10:45Z",
+              "webURL": "https://gitlab.example.com/platform/crm/crm-backend/-/pipelines/892",
+              "duration": 747
+            },
+            "lastPipelineJobs": [
+              { "name": "lint",             "stage": "lint",   "status": "success", "duration": 12.8  },
+              { "name": "test-unit",        "stage": "test",   "status": "success", "duration": 178.0 },
+              { "name": "test-integration", "stage": "test",   "status": "success", "duration": 260.0 },
+              { "name": "build-image",      "stage": "build",  "status": "success", "duration": 205.0 },
+              { "name": "deploy-sit",       "stage": "deploy", "status": "success", "duration": 92.0  }
+            ],
+            "failedJobsByStage": {}
+          },
+          {
+            "repoName": "crm-frontend",
+            "projectID": 202,
+            "lastPipeline": {
+              "id": 445,
+              "status": "failed",
+              "ref": "main",
+              "createdAt": "2026-03-26T09:04:22Z",
+              "webURL": "https://gitlab.example.com/platform/crm/crm-frontend/-/pipelines/445",
+              "duration": 183
+            },
+            "lastPipelineJobs": [
+              { "name": "lint",       "stage": "lint",   "status": "success", "duration": 8.1  },
+              { "name": "test",       "stage": "test",   "status": "success", "duration": 62.0 },
+              { "name": "build",      "stage": "build",  "status": "success", "duration": 71.0 },
+              { "name": "deploy-sit", "stage": "deploy", "status": "failed",  "duration": 42.0 }
+            ],
+            "failedJobsByStage": { "deploy": 1 }
+          }
+        ]
       }
     },
     {
-      "name": "svc",
+      "name": "hrm",
+      "source": "ocp_gitlab",
+      "level": "warning",
+      "issues": [
+        "image-builder SA has no rolebindings",
+        "deployer SA has no rolebindings"
+      ],
+      "ocp": {
+        "imageBuilderSAPresent": true,
+        "deployerSAPresent": true,
+        "imageBuilderToken": { "present": true, "ageDays": 10, "level": "ok" },
+        "deployerToken":     { "present": true, "ageDays": 10, "level": "ok" },
+        "bindingNamespaces": []
+      },
+      "gitlab": {
+        "repos": [
+          {
+            "repoName": "hrm",
+            "projectID": 789,
+            "lastPipeline": {
+              "id": 634,
+              "status": "success",
+              "ref": "main",
+              "createdAt": "2026-03-25T15:00:00Z",
+              "webURL": "https://gitlab.example.com/platform/hrm/hrm/-/pipelines/634",
+              "duration": 363
+            },
+            "lastPipelineJobs": [
+              { "name": "lint",  "stage": "lint",  "status": "success", "duration": 8.1   },
+              { "name": "test",  "stage": "test",  "status": "success", "duration": 114.0 },
+              { "name": "build", "stage": "build", "status": "success", "duration": 192.0 },
+              { "name": "push",  "stage": "build", "status": "success", "duration": 49.0  }
+            ],
+            "failedJobsByStage": {}
+          }
+        ]
+      }
+    },
+    {
+      "name": "fin",
       "source": "ocp_gitlab",
       "level": "critical",
       "issues": [
-        "deployer token age 94 days (critical)",
+        "deployer token age 95 days (critical)",
         "last pipeline status: failed"
       ],
       "ocp": {
         "imageBuilderSAPresent": true,
         "deployerSAPresent": true,
         "imageBuilderToken": { "present": true, "ageDays": 30, "level": "ok" },
-        "deployerToken":     { "present": true, "ageDays": 94, "level": "critical" },
+        "deployerToken":     { "present": true, "ageDays": 95, "level": "critical" },
+        "bindingNamespaces": ["fin-sit", "fin-uat", "fin-prod"]
+      },
+      "gitlab": {
+        "repos": [
+          {
+            "repoName": "fin",
+            "projectID": 321,
+            "lastPipeline": {
+              "id": 1089,
+              "status": "failed",
+              "ref": "main",
+              "createdAt": "2026-03-26T07:44:00Z",
+              "webURL": "https://gitlab.example.com/platform/fin/fin/-/pipelines/1089",
+              "duration": 87
+            },
+            "lastPipelineJobs": [
+              { "name": "lint",        "stage": "lint",   "status": "success", "duration": 13.0 },
+              { "name": "test-unit",   "stage": "test",   "status": "failed",  "duration": 74.0 },
+              { "name": "build-image", "stage": "build",  "status": "skipped", "duration": 0    },
+              { "name": "push-image",  "stage": "build",  "status": "skipped", "duration": 0    },
+              { "name": "deploy",      "stage": "deploy", "status": "skipped", "duration": 0    }
+            ],
+            "failedJobsByStage": { "test": 1 }
+          }
+        ]
+      }
+    },
+    {
+      "name": "svc",
+      "source": "ocp_gitlab",
+      "level": "error",
+      "issues": [
+        "GitLab API error: API /api/v4/projects/555/pipelines returned 503: service unavailable"
+      ],
+      "ocp": {
+        "imageBuilderSAPresent": true,
+        "deployerSAPresent": true,
+        "imageBuilderToken": { "present": true, "ageDays": 8, "level": "ok" },
+        "deployerToken":     { "present": true, "ageDays": 8, "level": "ok" },
         "bindingNamespaces": ["svc-sit", "svc-uat", "svc-prod"]
       },
       "gitlab": {
-        "lastPipeline": {
-          "id": 2205,
-          "status": "failed",
-          "ref": "main",
-          "createdAt": "2026-03-26T07:44:00Z",
-          "webURL": "https://gitlab.example.com/platform/svc/-/pipelines/2205"
-        },
-        "failedJobsByStage": {
-          "build": 1,
-          "test":  3
-        },
-        "runnerCount": 2,
-        "staleRunnerCount": 0
+        "repos": [
+          {
+            "repoName": "svc",
+            "projectID": 555,
+            "lastPipeline": null,
+            "lastPipelineJobs": [],
+            "failedJobsByStage": {},
+            "error": "API /api/v4/projects/555/pipelines returned 503: service unavailable"
+          }
+        ]
       }
     },
     {
@@ -89,8 +230,7 @@
       "source": "ocp_gitlab",
       "level": "warning",
       "issues": [
-        "last pipeline status: failed",
-        "all 2 runner(s) stale"
+        "last pipeline status: failed"
       ],
       "ocp": {
         "imageBuilderSAPresent": true,
@@ -100,68 +240,28 @@
         "bindingNamespaces": ["billing-sit", "billing-uat"]
       },
       "gitlab": {
-        "lastPipeline": {
-          "id": 1887,
-          "status": "failed",
-          "ref": "main",
-          "createdAt": "2026-03-25T23:18:33Z",
-          "webURL": "https://gitlab.example.com/platform/billing/-/pipelines/1887"
-        },
-        "failedJobsByStage": {
-          "deploy": 2
-        },
-        "runnerCount": 2,
-        "staleRunnerCount": 2
-      }
-    },
-    {
-      "name": "auth",
-      "source": "ocp_gitlab",
-      "level": "error",
-      "issues": [
-        "GitLab API error: API /api/v4/projects/89/pipelines returned 503: service unavailable"
-      ],
-      "ocp": {
-        "imageBuilderSAPresent": true,
-        "deployerSAPresent": true,
-        "imageBuilderToken": { "present": true, "ageDays": 8, "level": "ok" },
-        "deployerToken":     { "present": true, "ageDays": 8, "level": "ok" },
-        "bindingNamespaces": ["auth-sit", "auth-uat", "auth-prod"]
-      },
-      "gitlab": {
-        "lastPipeline": null,
-        "failedJobsByStage": {},
-        "runnerCount": 0,
-        "staleRunnerCount": 0,
-        "error": "API /api/v4/projects/89/pipelines returned 503: service unavailable"
-      }
-    },
-    {
-      "name": "infra",
-      "source": "ocp_gitlab",
-      "level": "warning",
-      "issues": [
-        "image-builder SA has no rolebindings",
-        "deployer token secret missing"
-      ],
-      "ocp": {
-        "imageBuilderSAPresent": true,
-        "deployerSAPresent": true,
-        "imageBuilderToken": { "present": true, "ageDays": 12, "level": "ok" },
-        "deployerToken":     { "present": false, "ageDays": 0, "level": "ok" },
-        "bindingNamespaces": []
-      },
-      "gitlab": {
-        "lastPipeline": {
-          "id": 990,
-          "status": "success",
-          "ref": "main",
-          "createdAt": "2026-03-25T15:00:00Z",
-          "webURL": "https://gitlab.example.com/platform/infra/-/pipelines/990"
-        },
-        "failedJobsByStage": {},
-        "runnerCount": 1,
-        "staleRunnerCount": 0
+        "repos": [
+          {
+            "repoName": "billing",
+            "projectID": 888,
+            "lastPipeline": {
+              "id": 1887,
+              "status": "failed",
+              "ref": "main",
+              "createdAt": "2026-03-25T23:18:33Z",
+              "webURL": "https://gitlab.example.com/platform/billing/billing/-/pipelines/1887",
+              "duration": 459
+            },
+            "lastPipelineJobs": [
+              { "name": "lint",   "stage": "lint",   "status": "success", "duration": 11.5  },
+              { "name": "test",   "stage": "test",   "status": "success", "duration": 145.0 },
+              { "name": "build",  "stage": "build",  "status": "success", "duration": 220.0 },
+              { "name": "push",   "stage": "build",  "status": "success", "duration": 55.0  },
+              { "name": "deploy", "stage": "deploy", "status": "failed",  "duration": 28.0  }
+            ],
+            "failedJobsByStage": { "deploy": 2 }
+          }
+        ]
       }
     },
     {
@@ -187,22 +287,33 @@
       ],
       "ocp": null,
       "gitlab": {
-        "lastPipeline": {
-          "id": 42,
-          "status": "success",
-          "ref": "main",
-          "createdAt": "2026-03-26T10:00:00Z",
-          "webURL": "https://gitlab.example.com/platform/newapp/-/pipelines/42"
-        },
-        "failedJobsByStage": {},
-        "runnerCount": 1,
-        "staleRunnerCount": 0
+        "repos": [
+          {
+            "repoName": "newapp",
+            "projectID": 999,
+            "lastPipeline": {
+              "id": 42,
+              "status": "success",
+              "ref": "main",
+              "createdAt": "2026-03-26T10:00:00Z",
+              "webURL": "https://gitlab.example.com/platform/newapp/newapp/-/pipelines/42",
+              "duration": 305
+            },
+            "lastPipelineJobs": [
+              { "name": "lint",        "stage": "lint",   "status": "success", "duration": 7.2   },
+              { "name": "test",        "stage": "test",   "status": "success", "duration": 98.0  },
+              { "name": "build-image", "stage": "build",  "status": "success", "duration": 145.0 },
+              { "name": "deploy-sit",  "stage": "deploy", "status": "success", "duration": 55.0  }
+            ],
+            "failedJobsByStage": {}
+          }
+        ]
       }
     }
   ],
   "totalApps": 8,
-  "okCount": 2,
-  "warningCount": 4,
+  "okCount": 1,
+  "warningCount": 5,
   "criticalCount": 1,
   "errorCount": 1
 }

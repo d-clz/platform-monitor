@@ -69,14 +69,20 @@ type OCPSummary struct {
 	Error                 string      `json:"error,omitempty"`
 }
 
-// GitLabSummary is the evaluated GitLab health for a single app.
-type GitLabSummary struct {
+// RepoSummary is the evaluated GitLab health for a single repository.
+type RepoSummary struct {
+	RepoName          string                `json:"repoName"`
+	ProjectID         int                   `json:"projectID"`
 	LastPipeline      *checker.PipelineInfo `json:"lastPipeline"`
 	LastPipelineJobs  []checker.JobInfo     `json:"lastPipelineJobs"`
-	FailedJobsByStage map[string]int         `json:"failedJobsByStage"`
-	RunnerCount       int                    `json:"runnerCount"`
-	StaleRunnerCount  int                    `json:"staleRunnerCount"`
-	Error             string                 `json:"error,omitempty"`
+	FailedJobsByStage map[string]int        `json:"failedJobsByStage"`
+	Error             string                `json:"error,omitempty"`
+}
+
+// GitLabSummary is the evaluated GitLab health for a single app.
+type GitLabSummary struct {
+	Repos []RepoSummary `json:"repos"`
+	Error string        `json:"error,omitempty"`
 }
 
 // ---- Output types ----
@@ -297,20 +303,10 @@ func (e *Evaluator) evalToken(ts checker.TokenStatus, now time.Time) TokenHealth
 	return th
 }
 
-// evaluateGitLab assesses the GitLab side of an app.
+// evaluateGitLab assesses the GitLab side of an app by iterating all repos and
+// applying worst-case aggregation.
 func (e *Evaluator) evaluateGitLab(s checker.GitLabAppStatus) (*GitLabSummary, Level, []string) {
-	summary := &GitLabSummary{
-		LastPipeline:      s.LastPipeline,
-		LastPipelineJobs:  s.LastPipelineJobs,
-		FailedJobsByStage: s.FailedJobsByStage,
-		Error:             s.Error,
-	}
-	for _, r := range s.Runners {
-		summary.RunnerCount++
-		if r.Stale {
-			summary.StaleRunnerCount++
-		}
-	}
+	summary := &GitLabSummary{Error: s.Error}
 
 	overall := LevelOK
 	var issues []string
@@ -320,26 +316,44 @@ func (e *Evaluator) evaluateGitLab(s checker.GitLabAppStatus) (*GitLabSummary, L
 		issues = append(issues, msg)
 	}
 
+	// App-level discovery error (e.g. can't reach sub-group API).
 	if s.Error != "" {
 		raise(LevelError, fmt.Sprintf("GitLab API error: %s", s.Error))
 		return summary, overall, issues
 	}
 
-	// Pipeline checks.
-	if s.LastPipeline == nil {
-		raise(LevelWarning, "no pipelines found")
-	} else {
-		switch s.LastPipeline.Status {
-		case "failed", "canceled":
-			raise(LevelWarning, fmt.Sprintf("last pipeline status: %s", s.LastPipeline.Status))
-		}
-	}
+	multiRepo := len(s.Repos) > 1
 
-	// Runner checks.
-	if summary.RunnerCount == 0 {
-		raise(LevelWarning, "no runners available")
-	} else if summary.StaleRunnerCount == summary.RunnerCount {
-		raise(LevelWarning, fmt.Sprintf("all %d runner(s) stale", summary.RunnerCount))
+	for _, repo := range s.Repos {
+		rs := RepoSummary{
+			RepoName:          repo.RepoName,
+			ProjectID:         repo.ProjectID,
+			LastPipeline:      repo.LastPipeline,
+			LastPipelineJobs:  repo.LastPipelineJobs,
+			FailedJobsByStage: repo.FailedJobsByStage,
+			Error:             repo.Error,
+		}
+		summary.Repos = append(summary.Repos, rs)
+
+		if repo.Error != "" {
+			raise(LevelError, fmt.Sprintf("GitLab API error: %s", repo.Error))
+			continue
+		}
+
+		// Issue prefix includes the repo name only when there are multiple repos.
+		prefix := ""
+		if multiRepo {
+			prefix = fmt.Sprintf("[%s] ", repo.RepoName)
+		}
+
+		if repo.LastPipeline == nil {
+			raise(LevelWarning, prefix+"no pipelines found")
+		} else {
+			switch repo.LastPipeline.Status {
+			case "failed", "canceled":
+				raise(LevelWarning, fmt.Sprintf("%slast pipeline status: %s", prefix, repo.LastPipeline.Status))
+			}
+		}
 	}
 
 	return summary, overall, issues

@@ -83,18 +83,60 @@ func buildMetricEntries(results evaluator.Results) []MetricEntry {
 			Level: string(app.Level),
 		}
 		if app.GitLab != nil {
-			if app.GitLab.LastPipeline != nil {
-				e.PipelineStatus = app.GitLab.LastPipeline.Status
-				e.PipelineDuration = app.GitLab.LastPipeline.Duration
+			// Aggregate across repos: worst pipeline status, sum of failed jobs.
+			e.PipelineStatus, e.PipelineDuration = worstPipelineStatus(app.GitLab.Repos)
+			for _, repo := range app.GitLab.Repos {
+				for _, count := range repo.FailedJobsByStage {
+					e.FailedJobs += count
+				}
 			}
-			for _, count := range app.GitLab.FailedJobsByStage {
-				e.FailedJobs += count
-			}
-			e.RunnersOnline = app.GitLab.RunnerCount - app.GitLab.StaleRunnerCount
+			// RunnersOnline: runner tracking is a separate feature; always 0 for now.
 		}
 		entries = append(entries, e)
 	}
 	return entries
+}
+
+// worstPipelineStatus returns the most severe pipeline status across all repos
+// and the duration of the repo that holds that status.
+// Priority: error > failed > canceled > other non-empty.
+func worstPipelineStatus(repos []evaluator.RepoSummary) (status string, duration int) {
+	rank := func(s string) int {
+		switch s {
+		case "failed":
+			return 3
+		case "canceled":
+			return 2
+		case "running":
+			return 1
+		default:
+			if s != "" {
+				return 0 // "success" and anything else
+			}
+			return -1 // no pipeline
+		}
+	}
+	best := -2
+	for _, repo := range repos {
+		if repo.Error != "" {
+			return "error", 0
+		}
+		if repo.LastPipeline == nil {
+			continue
+		}
+		if r := rank(repo.LastPipeline.Status); r > best {
+			best = r
+			status = repo.LastPipeline.Status
+		}
+	}
+	// Capture the duration from the first repo that holds the winning status.
+	for _, repo := range repos {
+		if repo.LastPipeline != nil && repo.LastPipeline.Status == status {
+			duration = repo.LastPipeline.Duration
+			break
+		}
+	}
+	return
 }
 
 // writeColdMetrics merges new cold entries into their monthly files and updates

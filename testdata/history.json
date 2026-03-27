@@ -50,7 +50,7 @@
     "errorCount": 0,
     "alerts": [
       {
-        "appName": "svc",
+        "appName": "fin",
         "level": "critical",
         "issues": ["deployer token age 93 days (critical)", "last pipeline status: failed"]
       },
@@ -73,14 +73,14 @@
     "errorCount": 1,
     "alerts": [
       {
-        "appName": "svc",
+        "appName": "fin",
         "level": "critical",
         "issues": ["deployer token age 94 days (critical)", "last pipeline status: failed"]
       },
       {
-        "appName": "auth",
+        "appName": "svc",
         "level": "error",
-        "issues": ["GitLab API error: API /api/v4/projects/89/pipelines returned 503: service unavailable"]
+        "issues": ["GitLab API error: API /api/v4/projects/555/pipelines returned 503: service unavailable"]
       },
       {
         "appName": "crm",
@@ -93,9 +93,9 @@
         "issues": ["last pipeline status: failed", "all 2 runner(s) stale"]
       },
       {
-        "appName": "infra",
+        "appName": "hrm",
         "level": "warning",
-        "issues": ["image-builder SA has no rolebindings", "deployer token secret missing"]
+        "issues": ["image-builder SA has no rolebindings", "deployer SA has no rolebindings"]
       }
     ]
   },
@@ -106,14 +106,14 @@
     "errorCount": 1,
     "alerts": [
       {
-        "appName": "svc",
+        "appName": "fin",
         "level": "critical",
-        "issues": ["deployer token age 94 days (critical)", "last pipeline status: failed"]
+        "issues": ["deployer token age 95 days (critical)", "last pipeline status: failed"]
       },
       {
-        "appName": "auth",
+        "appName": "svc",
         "level": "error",
-        "issues": ["GitLab API error: API /api/v4/projects/89/pipelines returned 503: service unavailable"]
+        "issues": ["GitLab API error: API /api/v4/projects/555/pipelines returned 503: service unavailable"]
       },
       {
         "appName": "crm",
@@ -126,9 +126,9 @@
         "issues": ["last pipeline status: failed", "all 2 runner(s) stale"]
       },
       {
-        "appName": "infra",
+        "appName": "hrm",
         "level": "warning",
-        "issues": ["image-builder SA has no rolebindings", "deployer token secret missing"]
+        "issues": ["image-builder SA has no rolebindings", "deployer SA has no rolebindings"]
       },
       {
         "appName": "newapp",

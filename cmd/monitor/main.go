@@ -97,35 +97,38 @@ func run() error {
 	}
 
 	cachePath := filepath.Join(dataDir, "gitlab-projects-cache.json")
-	cached := checker.LoadProjectCache(cachePath)
+	cached := checker.LoadAppReposCache(cachePath)
 
-	var apps []config.App
+	var appRepos []checker.AppRepos
 	if cfg.GitLabGroupID != 0 {
-		fresh, discErr := glChecker.DiscoverGroupProjects(ctx, cfg.GitLabGroupID)
+		fresh, discErr := glChecker.DiscoverAppRepos(ctx, cfg.GitLabGroupID)
 		if discErr != nil {
 			// Non-fatal: fall back to the cached list so existing apps still run.
 			log.Printf("WARNING: GitLab group discovery failed, using cached project list: %v", discErr)
 			fresh = cached
 		}
 
-		merged, changed := checker.MergeProjectCache(cached, fresh)
+		merged, changed := checker.MergeAppReposCache(cached, fresh)
 		if changed {
-			if err := checker.SaveProjectCache(cachePath, merged); err != nil {
+			if err := checker.SaveAppReposCache(cachePath, merged); err != nil {
 				log.Printf("WARNING: saving project cache: %v", err)
 			}
-			log.Printf("GitLab project cache updated: %d project(s) total", len(merged))
+			log.Printf("GitLab project cache updated: %d app(s) total", len(merged))
 		}
 
-		apps = make([]config.App, 0, len(merged))
-		for name, id := range merged {
-			apps = append(apps, config.App{Name: name, GitLabProjectID: id})
+		appNames := make([]string, 0, len(merged))
+		for name := range merged {
+			appNames = append(appNames, name)
 		}
-		sort.Slice(apps, func(i, j int) bool { return apps[i].Name < apps[j].Name })
+		sort.Strings(appNames)
+		for _, name := range appNames {
+			appRepos = append(appRepos, checker.AppRepos{AppName: name, Repos: merged[name]})
+		}
 	}
-	log.Printf("GitLab discovery complete: %d project(s) to check", len(apps))
+	log.Printf("GitLab discovery complete: %d app(s) to check", len(appRepos))
 
 	// ---- GitLab check ----
-	glStatuses, err := glChecker.Check(ctx, apps)
+	glStatuses, err := glChecker.Check(ctx, appRepos)
 	if err != nil {
 		log.Printf("WARNING: GitLab check failed: %v", err)
 		glStatuses = nil

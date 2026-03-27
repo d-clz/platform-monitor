@@ -47,11 +47,16 @@ func resultsWithPipeline(ts time.Time, appName string, pipelineID int, jobs ...c
 				Name:  appName,
 				Level: evaluator.LevelOK,
 				GitLab: &evaluator.GitLabSummary{
-					LastPipeline: &checker.PipelineInfo{
-						ID:     pipelineID,
-						Status: "success",
+					Repos: []evaluator.RepoSummary{
+						{
+							RepoName: appName,
+							LastPipeline: &checker.PipelineInfo{
+								ID:     pipelineID,
+								Status: "success",
+							},
+							LastPipelineJobs: jobs,
+						},
 					},
-					LastPipelineJobs: jobs,
 				},
 			},
 		},
@@ -83,8 +88,8 @@ func TestAppendJobMetrics_createsFilesForNewPipeline(t *testing.T) {
 	}
 
 	state := readJobMetricsState(t, dir)
-	if state["pfm"] != 101 {
-		t.Errorf("expected state[pfm]=101, got %d", state["pfm"])
+	if state["pfm/pfm"] != 101 {
+		t.Errorf("expected state[pfm/pfm]=101, got %d", state["pfm/pfm"])
 	}
 }
 
@@ -191,7 +196,7 @@ func TestAppendJobMetrics_noGitLab(t *testing.T) {
 }
 
 // TestAppendJobMetrics_multipleApps verifies that two apps each contribute their
-// own entries and state is tracked independently.
+// own entries and state is tracked independently per app/repo key.
 func TestAppendJobMetrics_multipleApps(t *testing.T) {
 	dir := t.TempDir()
 	rep := &Reporter{DataDir: dir}
@@ -203,16 +208,26 @@ func TestAppendJobMetrics_multipleApps(t *testing.T) {
 				Name:  "pfm",
 				Level: evaluator.LevelOK,
 				GitLab: &evaluator.GitLabSummary{
-					LastPipeline:     &checker.PipelineInfo{ID: 101, Status: "success"},
-					LastPipelineJobs: []checker.JobInfo{{Name: "lint", Stage: "lint", Status: "success", Duration: 10}},
+					Repos: []evaluator.RepoSummary{
+						{
+							RepoName:         "pfm",
+							LastPipeline:     &checker.PipelineInfo{ID: 101, Status: "success"},
+							LastPipelineJobs: []checker.JobInfo{{Name: "lint", Stage: "lint", Status: "success", Duration: 10}},
+						},
+					},
 				},
 			},
 			{
 				Name:  "crm",
 				Level: evaluator.LevelOK,
 				GitLab: &evaluator.GitLabSummary{
-					LastPipeline:     &checker.PipelineInfo{ID: 201, Status: "success"},
-					LastPipelineJobs: []checker.JobInfo{{Name: "test", Stage: "test", Status: "failed", Duration: 30}},
+					Repos: []evaluator.RepoSummary{
+						{
+							RepoName:         "crm",
+							LastPipeline:     &checker.PipelineInfo{ID: 201, Status: "success"},
+							LastPipelineJobs: []checker.JobInfo{{Name: "test", Stage: "test", Status: "failed", Duration: 30}},
+						},
+					},
 				},
 			},
 		},
@@ -226,11 +241,11 @@ func TestAppendJobMetrics_multipleApps(t *testing.T) {
 
 	entries := readJobMetrics(t, dir)
 	if len(entries) != 2 {
-		t.Fatalf("expected 2 entries (one per app), got %d", len(entries))
+		t.Fatalf("expected 2 entries (one per app/repo), got %d", len(entries))
 	}
 
 	state := readJobMetricsState(t, dir)
-	if state["pfm"] != 101 || state["crm"] != 201 {
+	if state["pfm/pfm"] != 101 || state["crm/crm"] != 201 {
 		t.Errorf("unexpected state: %v", state)
 	}
 }
@@ -238,7 +253,7 @@ func TestAppendJobMetrics_multipleApps(t *testing.T) {
 // ---- upsertJobEntry tests ----
 
 func TestUpsertJobEntry_newEntry(t *testing.T) {
-	entries := upsertJobEntry(nil, "2026-W13", "pfm", "lint", "lint", "success", 12.5)
+	entries := upsertJobEntry(nil, "2026-W13", "pfm", "pfm", "lint", "lint", "success", 12.5)
 	if len(entries) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(entries))
 	}
@@ -246,16 +261,16 @@ func TestUpsertJobEntry_newEntry(t *testing.T) {
 	if e.Runs != 1 || e.Failures != 0 || e.TotalDuration != 12.5 {
 		t.Errorf("unexpected entry: %+v", e)
 	}
-	if e.Week != "2026-W13" || e.App != "pfm" || e.Job != "lint" || e.Stage != "lint" {
+	if e.Week != "2026-W13" || e.App != "pfm" || e.Repo != "pfm" || e.Job != "lint" || e.Stage != "lint" {
 		t.Errorf("unexpected fields: %+v", e)
 	}
 }
 
 func TestUpsertJobEntry_existingEntry(t *testing.T) {
 	existing := []JobMetricEntry{
-		{Week: "2026-W13", App: "pfm", Job: "lint", Stage: "lint", Runs: 1, Failures: 0, TotalDuration: 10.0},
+		{Week: "2026-W13", App: "pfm", Repo: "pfm", Job: "lint", Stage: "lint", Runs: 1, Failures: 0, TotalDuration: 10.0},
 	}
-	entries := upsertJobEntry(existing, "2026-W13", "pfm", "lint", "lint", "failed", 8.0)
+	entries := upsertJobEntry(existing, "2026-W13", "pfm", "pfm", "lint", "lint", "failed", 8.0)
 	if len(entries) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(entries))
 	}
@@ -273,23 +288,23 @@ func TestUpsertJobEntry_existingEntry(t *testing.T) {
 
 func TestUpsertJobEntry_differentWeekCreatesNew(t *testing.T) {
 	existing := []JobMetricEntry{
-		{Week: "2026-W12", App: "pfm", Job: "lint", Stage: "lint", Runs: 1, TotalDuration: 10.0},
+		{Week: "2026-W12", App: "pfm", Repo: "pfm", Job: "lint", Stage: "lint", Runs: 1, TotalDuration: 10.0},
 	}
-	entries := upsertJobEntry(existing, "2026-W13", "pfm", "lint", "lint", "success", 12.0)
+	entries := upsertJobEntry(existing, "2026-W13", "pfm", "pfm", "lint", "lint", "success", 12.0)
 	if len(entries) != 2 {
 		t.Fatalf("expected 2 entries for different weeks, got %d", len(entries))
 	}
 }
 
 func TestUpsertJobEntry_canceledIsFailure(t *testing.T) {
-	entries := upsertJobEntry(nil, "2026-W13", "pfm", "deploy", "deploy", "canceled", 5.0)
+	entries := upsertJobEntry(nil, "2026-W13", "pfm", "pfm", "deploy", "deploy", "canceled", 5.0)
 	if entries[0].Failures != 1 {
 		t.Errorf("expected Failures=1 for canceled, got %d", entries[0].Failures)
 	}
 }
 
 func TestUpsertJobEntry_successIsNotFailure(t *testing.T) {
-	entries := upsertJobEntry(nil, "2026-W13", "pfm", "lint", "lint", "success", 10.0)
+	entries := upsertJobEntry(nil, "2026-W13", "pfm", "pfm", "lint", "lint", "success", 10.0)
 	if entries[0].Failures != 0 {
 		t.Errorf("expected Failures=0 for success, got %d", entries[0].Failures)
 	}

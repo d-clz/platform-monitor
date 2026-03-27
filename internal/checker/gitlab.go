@@ -10,11 +10,21 @@ import (
 	"os"
 	"strconv"
 	"time"
-
-	"platform-monitor/internal/config"
 )
 
 // ---- Public types ----
+
+// RepoInfo identifies a single GitLab repository within an app sub-group.
+type RepoInfo struct {
+	Name string `json:"name"`
+	ID   int    `json:"id"`
+}
+
+// AppRepos groups a set of repos that belong to a single logical application.
+type AppRepos struct {
+	AppName string
+	Repos   []RepoInfo
+}
 
 // PipelineInfo holds the key fields of the most recent GitLab pipeline run.
 type PipelineInfo struct {
@@ -35,6 +45,7 @@ type JobInfo struct {
 }
 
 // RunnerStatus is the health snapshot for a single GitLab runner.
+// Kept for future global-runner tracking; not used in per-app checks.
 type RunnerStatus struct {
 	ID          int
 	Description string
@@ -43,15 +54,21 @@ type RunnerStatus struct {
 	Stale       bool // true when ContactedAt is older than RunnerStalenessMin
 }
 
-// GitLabAppStatus is the health snapshot for a single app from GitLab's perspective.
-type GitLabAppStatus struct {
-	AppName           string
+// RepoStatus is the per-repo health snapshot within a GitLab app sub-group.
+type RepoStatus struct {
+	RepoName          string
 	ProjectID         int
 	LastPipeline      *PipelineInfo  // nil if no pipelines exist
 	LastPipelineJobs  []JobInfo      // jobs from the most recent pipeline
 	FailedJobsByStage map[string]int // stage → count within FailureWindow
-	Runners           []RunnerStatus
-	Error             string // non-empty when any API call for this app failed
+	Error             string         // non-empty when any API call for this repo failed
+}
+
+// GitLabAppStatus is the health snapshot for a single app from GitLab's perspective.
+type GitLabAppStatus struct {
+	AppName string
+	Repos   []RepoStatus
+	Error   string // non-empty for group/discovery-level errors
 }
 
 // ---- Checker ----
@@ -62,64 +79,64 @@ type GitLabChecker struct {
 	BaseURL            string // e.g. "https://gitlab.example.com"
 	Token              string // GitLab Personal Access Token
 	FailureWindow      time.Duration
-	RunnerStalenessMin int // minutes before a runner is considered stale
+	RunnerStalenessMin int // minutes before a runner is considered stale (future use)
 
 	// Now returns the current time. Defaults to time.Now if nil.
 	Now func() time.Time
 }
 
-// Check queries GitLab for each app and returns a per-app status slice.
-// Individual app errors are captured in GitLabAppStatus.Error; the method
-// itself only returns an error for programming mistakes (nil receiver, etc.).
-func (c *GitLabChecker) Check(ctx context.Context, apps []config.App) ([]GitLabAppStatus, error) {
+// Check queries GitLab for each app's repos and returns a per-app status slice.
+// Per-repo errors are captured in RepoStatus.Error; the method itself only
+// returns an error for programming mistakes (nil receiver, etc.).
+func (c *GitLabChecker) Check(ctx context.Context, apps []AppRepos) ([]GitLabAppStatus, error) {
 	now := c.now()
 	results := make([]GitLabAppStatus, 0, len(apps))
 
 	for _, app := range apps {
-		status := GitLabAppStatus{
-			AppName:   app.Name,
-			ProjectID: app.GitLabProjectID,
+		status := GitLabAppStatus{AppName: app.AppName}
+		status.Repos = make([]RepoStatus, 0, len(app.Repos))
+		for _, repo := range app.Repos {
+			status.Repos = append(status.Repos, c.checkRepo(ctx, repo, now))
 		}
-
-		pipeline, err := c.getLastPipeline(ctx, app.GitLabProjectID)
-		if err != nil {
-			status.Error = err.Error()
-			results = append(results, status)
-			continue
-		}
-		status.LastPipeline = pipeline
-
-		if pipeline != nil {
-			jobs, err := c.getLastPipelineJobs(ctx, app.GitLabProjectID, pipeline.ID)
-			if err != nil {
-				status.Error = err.Error()
-				results = append(results, status)
-				continue
-			}
-			status.LastPipelineJobs = jobs
-		}
-
-		since := now.Add(-c.FailureWindow)
-		failedByStage, err := c.getFailedJobsByStage(ctx, app.GitLabProjectID, since)
-		if err != nil {
-			status.Error = err.Error()
-			results = append(results, status)
-			continue
-		}
-		status.FailedJobsByStage = failedByStage
-
-		runners, err := c.getRunners(ctx, app.GitLabProjectID, now)
-		if err != nil {
-			status.Error = err.Error()
-			results = append(results, status)
-			continue
-		}
-		status.Runners = runners
-
 		results = append(results, status)
 	}
 
 	return results, nil
+}
+
+// checkRepo fetches pipeline, job, and failure data for a single repo.
+func (c *GitLabChecker) checkRepo(ctx context.Context, repo RepoInfo, now time.Time) RepoStatus {
+	rs := RepoStatus{
+		RepoName:          repo.Name,
+		ProjectID:         repo.ID,
+		FailedJobsByStage: make(map[string]int),
+	}
+
+	pipeline, err := c.getLastPipeline(ctx, repo.ID)
+	if err != nil {
+		rs.Error = err.Error()
+		return rs
+	}
+	rs.LastPipeline = pipeline
+
+	if pipeline != nil {
+		jobs, err := c.getLastPipelineJobs(ctx, repo.ID, pipeline.ID)
+		if err != nil {
+			rs.Error = err.Error()
+			return rs
+		}
+		rs.LastPipelineJobs = jobs
+	}
+
+	since := now.Add(-c.FailureWindow)
+	failedByStage, err := c.getFailedJobsByStage(ctx, repo.ID, since)
+	if err != nil {
+		rs.Error = err.Error()
+		return rs
+	}
+	rs.FailedJobsByStage = failedByStage
+
+	return rs
 }
 
 func (c *GitLabChecker) now() time.Time {
@@ -158,6 +175,11 @@ type glRunner struct {
 type glProject struct {
 	ID   int    `json:"id"`
 	Path string `json:"path"` // slug only (e.g. "pfm"), not the full namespace path
+}
+
+type glSubgroup struct {
+	ID   int    `json:"id"`
+	Path string `json:"path"` // slug, becomes the app name
 }
 
 // ---- API call helpers ----
@@ -241,6 +263,7 @@ func (c *GitLabChecker) getFailedJobsByStage(ctx context.Context, projectID int,
 	return result, nil
 }
 
+// getRunners fetches project-level runners. Kept for future global-runner tracking.
 func (c *GitLabChecker) getRunners(ctx context.Context, projectID int, now time.Time) ([]RunnerStatus, error) {
 	path := fmt.Sprintf("/api/v4/projects/%d/runners", projectID)
 	params := url.Values{
@@ -271,34 +294,52 @@ func (c *GitLabChecker) getRunners(ctx context.Context, projectID int, now time.
 	return result, nil
 }
 
-// ---- Group project discovery ----
+// ---- Sub-group / project discovery ----
 
-// DiscoverGroupProjects fetches all projects in the given GitLab group (and its
-// sub-groups) and returns a map of project path → project ID. It handles
-// GitLab's pagination transparently.
-func (c *GitLabChecker) DiscoverGroupProjects(ctx context.Context, groupID int) (map[string]int, error) {
-	result := make(map[string]int)
+// DiscoverAppRepos fetches sub-groups of the root group (one per app) and the
+// projects within each sub-group (one per repo). It returns a map of
+// appName → []RepoInfo for building or refreshing the project cache.
+func (c *GitLabChecker) DiscoverAppRepos(ctx context.Context, groupID int) (map[string][]RepoInfo, error) {
+	var subgroups []glSubgroup
 	for page := 1; ; {
-		projects, nextPage, err := c.getProjectsPage(ctx, groupID, page)
+		batch, nextPage, err := c.getSubgroupsPage(ctx, groupID, page)
 		if err != nil {
 			return nil, err
 		}
-		for _, p := range projects {
-			result[p.Path] = p.ID
-		}
+		subgroups = append(subgroups, batch...)
 		if nextPage == 0 {
 			break
 		}
 		page = nextPage
 	}
+
+	result := make(map[string][]RepoInfo, len(subgroups))
+	for _, sg := range subgroups {
+		var projects []glProject
+		for page := 1; ; {
+			batch, nextPage, err := c.getGroupProjectsPage(ctx, sg.ID, page)
+			if err != nil {
+				return nil, fmt.Errorf("listing projects for sub-group %q: %w", sg.Path, err)
+			}
+			projects = append(projects, batch...)
+			if nextPage == 0 {
+				break
+			}
+			page = nextPage
+		}
+		repos := make([]RepoInfo, 0, len(projects))
+		for _, p := range projects {
+			repos = append(repos, RepoInfo{Name: p.Path, ID: p.ID})
+		}
+		result[sg.Path] = repos
+	}
 	return result, nil
 }
 
-// getProjectsPage fetches one page of projects from the group API.
-// Returns the project slice, the next page number (0 = no more pages), and any error.
-func (c *GitLabChecker) getProjectsPage(ctx context.Context, groupID, page int) ([]glProject, int, error) {
-	rawURL := fmt.Sprintf("%s/api/v4/groups/%d/projects?include_subgroups=true&per_page=100&page=%s",
-		c.BaseURL, groupID, strconv.Itoa(page))
+// getSubgroupsPage fetches one page of sub-groups from a group.
+func (c *GitLabChecker) getSubgroupsPage(ctx context.Context, groupID, page int) ([]glSubgroup, int, error) {
+	rawURL := fmt.Sprintf("%s/api/v4/groups/%d/subgroups?per_page=100&page=%d",
+		c.BaseURL, groupID, page)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -309,7 +350,43 @@ func (c *GitLabChecker) getProjectsPage(ctx context.Context, groupID, page int) 
 
 	resp, err := c.Client.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("executing request to groups/%d/projects: %w", groupID, err)
+		return nil, 0, fmt.Errorf("fetching subgroups for group %d: %w", groupID, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, 0, fmt.Errorf("API groups/%d/subgroups returned %d: %s", groupID, resp.StatusCode, string(body))
+	}
+
+	var sgs []glSubgroup
+	if err := json.NewDecoder(resp.Body).Decode(&sgs); err != nil {
+		return nil, 0, fmt.Errorf("decoding subgroups response: %w", err)
+	}
+
+	nextPage := 0
+	if next := resp.Header.Get("X-Next-Page"); next != "" {
+		nextPage, _ = strconv.Atoi(next)
+	}
+
+	return sgs, nextPage, nil
+}
+
+// getGroupProjectsPage fetches one page of projects directly in a group (not recursive).
+func (c *GitLabChecker) getGroupProjectsPage(ctx context.Context, groupID, page int) ([]glProject, int, error) {
+	rawURL := fmt.Sprintf("%s/api/v4/groups/%d/projects?per_page=100&page=%d",
+		c.BaseURL, groupID, page)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, 0, fmt.Errorf("creating request: %w", err)
+	}
+	req.Header.Set("PRIVATE-TOKEN", c.Token)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.Client.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("fetching projects for group %d: %w", groupID, err)
 	}
 	defer resp.Body.Close()
 
@@ -320,7 +397,7 @@ func (c *GitLabChecker) getProjectsPage(ctx context.Context, groupID, page int) 
 
 	var projects []glProject
 	if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
-		return nil, 0, fmt.Errorf("decoding groups/%d/projects response: %w", groupID, err)
+		return nil, 0, fmt.Errorf("decoding projects response: %w", err)
 	}
 
 	nextPage := 0
@@ -331,50 +408,69 @@ func (c *GitLabChecker) getProjectsPage(ctx context.Context, groupID, page int) 
 	return projects, nextPage, nil
 }
 
-// ---- Project cache ----
+// ---- App repos cache ----
 
-// LoadProjectCache reads the cached project map from disk.
-// Returns an empty map if the file is missing or unreadable — the caller
-// falls back to a fresh API fetch.
-func LoadProjectCache(path string) map[string]int {
+// LoadAppReposCache reads the cached app→repos map from disk.
+// Returns an empty map if the file is missing or unreadable.
+func LoadAppReposCache(path string) map[string][]RepoInfo {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return make(map[string]int)
+		return make(map[string][]RepoInfo)
 	}
-	var m map[string]int
+	var m map[string][]RepoInfo
 	if err := json.Unmarshal(data, &m); err != nil {
-		return make(map[string]int)
+		return make(map[string][]RepoInfo)
 	}
 	return m
 }
 
-// MergeProjectCache merges fresh discoveries into the cached map.
-// Existing entries are never removed (option B: preserve for data-integrity of
-// long-term reports). Returns the merged map and changed=true when new projects
-// were added.
-func MergeProjectCache(cached, fresh map[string]int) (map[string]int, bool) {
-	merged := make(map[string]int, len(cached))
+// MergeAppReposCache merges fresh discoveries into the cached map.
+// Option B: existing apps and repos are never removed to preserve long-term
+// report integrity. Returns the merged map and changed=true when anything new
+// was added.
+func MergeAppReposCache(cached, fresh map[string][]RepoInfo) (map[string][]RepoInfo, bool) {
+	merged := make(map[string][]RepoInfo, len(cached))
 	for k, v := range cached {
-		merged[k] = v
+		cp := make([]RepoInfo, len(v))
+		copy(cp, v)
+		merged[k] = cp
 	}
+
 	changed := false
-	for k, v := range fresh {
-		if _, exists := merged[k]; !exists {
-			merged[k] = v
+	for appName, freshRepos := range fresh {
+		existing, ok := merged[appName]
+		if !ok {
+			// Brand-new app.
+			cp := make([]RepoInfo, len(freshRepos))
+			copy(cp, freshRepos)
+			merged[appName] = cp
 			changed = true
+			continue
 		}
+		// Add repos that aren't already cached (match by ID).
+		existingIDs := make(map[int]struct{}, len(existing))
+		for _, r := range existing {
+			existingIDs[r.ID] = struct{}{}
+		}
+		for _, r := range freshRepos {
+			if _, found := existingIDs[r.ID]; !found {
+				existing = append(existing, r)
+				changed = true
+			}
+		}
+		merged[appName] = existing
 	}
 	return merged, changed
 }
 
-// SaveProjectCache writes the project map to disk as JSON.
-func SaveProjectCache(path string, projects map[string]int) error {
-	data, err := json.MarshalIndent(projects, "", "  ")
+// SaveAppReposCache writes the app→repos map to disk as JSON.
+func SaveAppReposCache(path string, cache map[string][]RepoInfo) error {
+	data, err := json.MarshalIndent(cache, "", "  ")
 	if err != nil {
-		return fmt.Errorf("marshalling project cache: %w", err)
+		return fmt.Errorf("marshalling app repos cache: %w", err)
 	}
 	if err := os.WriteFile(path, data, 0o644); err != nil {
-		return fmt.Errorf("writing project cache: %w", err)
+		return fmt.Errorf("writing app repos cache: %w", err)
 	}
 	return nil
 }

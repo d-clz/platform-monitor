@@ -60,12 +60,14 @@ func healthyGL(name string, projectID int) checker.GitLabAppStatus {
 		WebURL:    "https://gl/p/1",
 	}
 	return checker.GitLabAppStatus{
-		AppName:           name,
-		ProjectID:         projectID,
-		LastPipeline:      pipeline,
-		FailedJobsByStage: map[string]int{},
-		Runners: []checker.RunnerStatus{
-			{ID: 1, Description: "runner-a", Active: true, ContactedAt: fixedNow.Add(-2 * time.Minute), Stale: false},
+		AppName: name,
+		Repos: []checker.RepoStatus{
+			{
+				RepoName:          name,
+				ProjectID:         projectID,
+				LastPipeline:      pipeline,
+				FailedJobsByStage: map[string]int{},
+			},
 		},
 	}
 }
@@ -171,7 +173,7 @@ func TestEvaluate_missingSA(t *testing.T) {
 // TestEvaluate_failedPipeline verifies that a failed pipeline produces a warning.
 func TestEvaluate_failedPipeline(t *testing.T) {
 	gl := healthyGL("pfm", 10)
-	gl.LastPipeline.Status = "failed"
+	gl.Repos[0].LastPipeline.Status = "failed"
 
 	results := newEvaluator().Evaluate(
 		[]checker.OCPAppStatus{healthyOCP("pfm")},
@@ -186,27 +188,25 @@ func TestEvaluate_failedPipeline(t *testing.T) {
 	}
 }
 
-// TestEvaluate_allRunnersStale verifies that all-stale runners produce a warning.
-func TestEvaluate_allRunnersStale(t *testing.T) {
-	gl := healthyGL("pfm", 10)
-	gl.Runners = []checker.RunnerStatus{
-		{ID: 1, Active: true, ContactedAt: fixedNow.Add(-20 * time.Minute), Stale: true},
-		{ID: 2, Active: true, ContactedAt: fixedNow.Add(-15 * time.Minute), Stale: true},
-	}
-
+// TestEvaluate_reposSummaryPopulated verifies that GitLabSummary.Repos is
+// populated with one entry per repo after evaluation.
+func TestEvaluate_reposSummaryPopulated(t *testing.T) {
 	results := newEvaluator().Evaluate(
 		[]checker.OCPAppStatus{healthyOCP("pfm")},
-		[]checker.GitLabAppStatus{gl},
+		[]checker.GitLabAppStatus{healthyGL("pfm", 10)},
 	)
 	app := results.Apps[0]
-	if app.Level != LevelWarning {
-		t.Errorf("expected warning, got %q", app.Level)
+	if app.GitLab == nil {
+		t.Fatal("expected non-nil GitLab summary")
 	}
-	if !hasIssue(app.Issues, "all 2 runner(s) stale") {
-		t.Errorf("expected stale runners issue, got: %v", app.Issues)
+	if len(app.GitLab.Repos) != 1 {
+		t.Fatalf("expected 1 repo in summary, got %d", len(app.GitLab.Repos))
 	}
-	if app.GitLab.StaleRunnerCount != 2 {
-		t.Errorf("expected StaleRunnerCount=2, got %d", app.GitLab.StaleRunnerCount)
+	if app.GitLab.Repos[0].RepoName != "pfm" {
+		t.Errorf("expected RepoName=pfm, got %q", app.GitLab.Repos[0].RepoName)
+	}
+	if app.GitLab.Repos[0].LastPipeline == nil {
+		t.Error("expected LastPipeline populated in repo summary")
 	}
 }
 
@@ -254,12 +254,12 @@ func TestEvaluate_gitlabOnly(t *testing.T) {
 	}
 }
 
-// TestEvaluate_gitlabAPIError verifies that a GitLab API error is surfaced as
-// Level=error.
+// TestEvaluate_gitlabAPIError verifies that a GitLab repo API error is surfaced
+// as Level=error.
 func TestEvaluate_gitlabAPIError(t *testing.T) {
 	gl := healthyGL("pfm", 10)
-	gl.Error = "API /api/v4/projects/10/pipelines returned 503: service unavailable"
-	gl.LastPipeline = nil
+	gl.Repos[0].Error = "API /api/v4/projects/10/pipelines returned 503: service unavailable"
+	gl.Repos[0].LastPipeline = nil
 
 	results := newEvaluator().Evaluate(
 		[]checker.OCPAppStatus{healthyOCP("pfm")},
@@ -281,8 +281,8 @@ func TestEvaluate_aggregateCounts(t *testing.T) {
 	ocpBad.ImageBuilderSA = checker.SAStatus{Exists: false}
 
 	glError := healthyGL("svc", 30)
-	glError.Error = "timeout"
-	glError.LastPipeline = nil
+	glError.Repos[0].Error = "timeout"
+	glError.Repos[0].LastPipeline = nil
 
 	results := newEvaluator().Evaluate(
 		[]checker.OCPAppStatus{

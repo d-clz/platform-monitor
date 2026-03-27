@@ -15,11 +15,12 @@ import (
 // 52 weeks = ~1 year. No cold rotation needed — the file stays small.
 const jobMetricsWeekCap = 52
 
-// JobMetricEntry is a weekly aggregate for one job within one app.
+// JobMetricEntry is a weekly aggregate for one job within one repo of one app.
 // Each distinct pipeline run is counted exactly once (deduped by pipeline ID).
 type JobMetricEntry struct {
 	Week          string  `json:"week"`          // "2026-W13" (ISO year-week)
 	App           string  `json:"app"`
+	Repo          string  `json:"repo"`          // repository name within the app sub-group
 	Job           string  `json:"job"`
 	Stage         string  `json:"stage"`
 	Runs          int     `json:"runs"`          // distinct pipeline runs counted
@@ -62,20 +63,25 @@ func (r *Reporter) appendJobMetrics(results evaluator.Results) error {
 	updated := false
 
 	for _, app := range results.Apps {
-		if app.GitLab == nil || app.GitLab.LastPipeline == nil {
+		if app.GitLab == nil {
 			continue
 		}
-		pipelineID := app.GitLab.LastPipeline.ID
-		if state[app.Name] == pipelineID {
-			continue // already counted this pipeline run
-		}
+		for _, repo := range app.GitLab.Repos {
+			if repo.LastPipeline == nil {
+				continue
+			}
+			stateKey := app.Name + "/" + repo.RepoName
+			if state[stateKey] == repo.LastPipeline.ID {
+				continue // already counted this pipeline run
+			}
 
-		// New pipeline — upsert each job into this week's aggregate.
-		for _, job := range app.GitLab.LastPipelineJobs {
-			entries = upsertJobEntry(entries, week, app.Name, job.Name, job.Stage, job.Status, job.Duration)
+			// New pipeline — upsert each job into this week's aggregate.
+			for _, job := range repo.LastPipelineJobs {
+				entries = upsertJobEntry(entries, week, app.Name, repo.RepoName, job.Name, job.Stage, job.Status, job.Duration)
+			}
+			state[stateKey] = repo.LastPipeline.ID
+			updated = true
 		}
-		state[app.Name] = pipelineID
-		updated = true
 	}
 
 	if !updated {
@@ -100,12 +106,12 @@ func (r *Reporter) appendJobMetrics(results evaluator.Results) error {
 	return atomicWrite(statePath, stateData)
 }
 
-// upsertJobEntry finds the entry for (week, app, job) and increments its
+// upsertJobEntry finds the entry for (week, app, repo, job) and increments its
 // counters, or appends a new one if none exists.
-func upsertJobEntry(entries []JobMetricEntry, week, app, job, stage, status string, duration float64) []JobMetricEntry {
+func upsertJobEntry(entries []JobMetricEntry, week, app, repo, job, stage, status string, duration float64) []JobMetricEntry {
 	failed := status == "failed" || status == "canceled"
 	for i, e := range entries {
-		if e.Week == week && e.App == app && e.Job == job {
+		if e.Week == week && e.App == app && e.Repo == repo && e.Job == job {
 			entries[i].Runs++
 			if failed {
 				entries[i].Failures++
@@ -117,6 +123,7 @@ func upsertJobEntry(entries []JobMetricEntry, week, app, job, stage, status stri
 	e := JobMetricEntry{
 		Week:          week,
 		App:           app,
+		Repo:          repo,
 		Job:           job,
 		Stage:         stage,
 		Runs:          1,

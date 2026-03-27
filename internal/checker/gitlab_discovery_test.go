@@ -9,203 +9,238 @@ import (
 	"testing"
 )
 
-// ---- DiscoverGroupProjects ----
+// ---- DiscoverAppRepos ----
 
-// TestDiscoverGroupProjects_success verifies that all projects on a single page
-// are returned with the correct path→ID mapping.
-func TestDiscoverGroupProjects_success(t *testing.T) {
+// TestDiscoverAppRepos_success verifies that sub-groups are fetched and then
+// their projects are fetched to build the app→repos map.
+func TestDiscoverAppRepos_success(t *testing.T) {
 	srv := glMux(map[string]http.HandlerFunc{
-		"/api/v4/groups/5/projects": func(w http.ResponseWriter, r *http.Request) {
-			// Verify expected query params.
-			q := r.URL.Query()
-			if q.Get("include_subgroups") != "true" {
-				t.Errorf("expected include_subgroups=true, got %q", q.Get("include_subgroups"))
+		"/api/v4/groups/5/subgroups": func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("PRIVATE-TOKEN") != "test-token" {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
 			}
-			if q.Get("per_page") != "100" {
-				t.Errorf("expected per_page=100, got %q", q.Get("per_page"))
-			}
-			// No X-Next-Page → single page.
-			writeJSON(w, []glProject{
+			writeJSON(w, []glSubgroup{
 				{ID: 10, Path: "pfm"},
 				{ID: 20, Path: "crm"},
-				{ID: 30, Path: "hrm"},
+			})
+		},
+		"/api/v4/groups/10/projects": func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, []glProject{
+				{ID: 101, Path: "pfm-api"},
+				{ID: 102, Path: "pfm-service"},
+			})
+		},
+		"/api/v4/groups/20/projects": func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, []glProject{
+				{ID: 201, Path: "crm-backend"},
 			})
 		},
 	})
 	defer srv.Close()
 
 	c := newGitLabChecker(srv)
-	projects, err := c.DiscoverGroupProjects(context.Background(), 5)
+	result, err := c.DiscoverAppRepos(context.Background(), 5)
 	if err != nil {
-		t.Fatalf("DiscoverGroupProjects: %v", err)
+		t.Fatalf("DiscoverAppRepos: %v", err)
 	}
-	if len(projects) != 3 {
-		t.Fatalf("expected 3 projects, got %d", len(projects))
+	if len(result) != 2 {
+		t.Fatalf("expected 2 apps, got %d", len(result))
 	}
-	if projects["pfm"] != 10 {
-		t.Errorf("pfm: expected ID=10, got %d", projects["pfm"])
+	if len(result["pfm"]) != 2 {
+		t.Errorf("pfm: expected 2 repos, got %d", len(result["pfm"]))
 	}
-	if projects["crm"] != 20 {
-		t.Errorf("crm: expected ID=20, got %d", projects["crm"])
+	if len(result["crm"]) != 1 {
+		t.Errorf("crm: expected 1 repo, got %d", len(result["crm"]))
 	}
-	if projects["hrm"] != 30 {
-		t.Errorf("hrm: expected ID=30, got %d", projects["hrm"])
+	if result["pfm"][0].Name != "pfm-api" || result["pfm"][0].ID != 101 {
+		t.Errorf("pfm[0]: expected pfm-api/101, got %+v", result["pfm"][0])
+	}
+	if result["crm"][0].Name != "crm-backend" || result["crm"][0].ID != 201 {
+		t.Errorf("crm[0]: expected crm-backend/201, got %+v", result["crm"][0])
 	}
 }
 
-// TestDiscoverGroupProjects_pagination verifies that multiple pages are fetched
-// and merged into a single result map.
-func TestDiscoverGroupProjects_pagination(t *testing.T) {
+// TestDiscoverAppRepos_pagination verifies that both the subgroup and project
+// pages are fetched when X-Next-Page is set.
+func TestDiscoverAppRepos_pagination(t *testing.T) {
 	srv := glMux(map[string]http.HandlerFunc{
-		"/api/v4/groups/5/projects": func(w http.ResponseWriter, r *http.Request) {
+		"/api/v4/groups/5/subgroups": func(w http.ResponseWriter, r *http.Request) {
 			page := r.URL.Query().Get("page")
 			switch page {
-			case "1", "": // page 1
+			case "1", "":
 				w.Header().Set("X-Next-Page", "2")
-				writeJSON(w, []glProject{{ID: 10, Path: "pfm"}})
-			case "2": // page 2 — last page, no X-Next-Page
-				writeJSON(w, []glProject{{ID: 20, Path: "crm"}})
+				writeJSON(w, []glSubgroup{{ID: 10, Path: "pfm"}})
+			case "2":
+				writeJSON(w, []glSubgroup{{ID: 20, Path: "crm"}})
 			default:
 				http.Error(w, "unexpected page", http.StatusBadRequest)
 			}
 		},
-	})
-	defer srv.Close()
-
-	c := newGitLabChecker(srv)
-	projects, err := c.DiscoverGroupProjects(context.Background(), 5)
-	if err != nil {
-		t.Fatalf("DiscoverGroupProjects: %v", err)
-	}
-	if len(projects) != 2 {
-		t.Fatalf("expected 2 projects across 2 pages, got %d", len(projects))
-	}
-	if projects["pfm"] != 10 || projects["crm"] != 20 {
-		t.Errorf("unexpected project map: %v", projects)
-	}
-}
-
-// TestDiscoverGroupProjects_emptyGroup verifies that an empty group returns an
-// empty map without error.
-func TestDiscoverGroupProjects_emptyGroup(t *testing.T) {
-	srv := glMux(map[string]http.HandlerFunc{
-		"/api/v4/groups/5/projects": func(w http.ResponseWriter, r *http.Request) {
-			writeJSON(w, []glProject{})
+		"/api/v4/groups/10/projects": func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, []glProject{{ID: 101, Path: "pfm-api"}})
+		},
+		"/api/v4/groups/20/projects": func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, []glProject{{ID: 201, Path: "crm-backend"}})
 		},
 	})
 	defer srv.Close()
 
 	c := newGitLabChecker(srv)
-	projects, err := c.DiscoverGroupProjects(context.Background(), 5)
+	result, err := c.DiscoverAppRepos(context.Background(), 5)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("DiscoverAppRepos: %v", err)
 	}
-	if len(projects) != 0 {
-		t.Errorf("expected empty map, got %v", projects)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 apps across 2 subgroup pages, got %d", len(result))
 	}
 }
 
-// TestDiscoverGroupProjects_apiError verifies that an API error is returned as-is.
-func TestDiscoverGroupProjects_apiError(t *testing.T) {
+// TestDiscoverAppRepos_emptyGroup verifies that a group with no sub-groups
+// returns an empty map without error.
+func TestDiscoverAppRepos_emptyGroup(t *testing.T) {
 	srv := glMux(map[string]http.HandlerFunc{
-		"/api/v4/groups/5/projects": func(w http.ResponseWriter, r *http.Request) {
+		"/api/v4/groups/5/subgroups": func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, []glSubgroup{})
+		},
+	})
+	defer srv.Close()
+
+	c := newGitLabChecker(srv)
+	result, err := c.DiscoverAppRepos(context.Background(), 5)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result) != 0 {
+		t.Errorf("expected empty map, got %v", result)
+	}
+}
+
+// TestDiscoverAppRepos_apiError verifies that a subgroup API error is returned.
+func TestDiscoverAppRepos_apiError(t *testing.T) {
+	srv := glMux(map[string]http.HandlerFunc{
+		"/api/v4/groups/5/subgroups": func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"message":"403 Forbidden"}`, http.StatusForbidden)
 		},
 	})
 	defer srv.Close()
 
 	c := newGitLabChecker(srv)
-	_, err := c.DiscoverGroupProjects(context.Background(), 5)
+	_, err := c.DiscoverAppRepos(context.Background(), 5)
 	if err == nil {
 		t.Fatal("expected error from API, got nil")
 	}
 }
 
-// TestDiscoverGroupProjects_authHeader verifies the PAT is sent on discovery requests.
-func TestDiscoverGroupProjects_authHeader(t *testing.T) {
+// TestDiscoverAppRepos_projectsApiError verifies that a project API error
+// within a sub-group is propagated.
+func TestDiscoverAppRepos_projectsApiError(t *testing.T) {
 	srv := glMux(map[string]http.HandlerFunc{
-		"/api/v4/groups/5/projects": func(w http.ResponseWriter, r *http.Request) {
-			if r.Header.Get("PRIVATE-TOKEN") != "test-token" {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
-			}
-			writeJSON(w, []glProject{{ID: 10, Path: "pfm"}})
+		"/api/v4/groups/5/subgroups": func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, []glSubgroup{{ID: 10, Path: "pfm"}})
+		},
+		"/api/v4/groups/10/projects": func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, `{"message":"503 Service Unavailable"}`, http.StatusServiceUnavailable)
 		},
 	})
 	defer srv.Close()
 
 	c := newGitLabChecker(srv)
-	projects, err := c.DiscoverGroupProjects(context.Background(), 5)
-	if err != nil {
-		t.Fatalf("DiscoverGroupProjects: %v", err)
-	}
-	if len(projects) == 0 {
-		t.Error("expected projects to be returned when auth header is correct")
+	_, err := c.DiscoverAppRepos(context.Background(), 5)
+	if err == nil {
+		t.Fatal("expected error from projects API, got nil")
 	}
 }
 
-// ---- MergeProjectCache ----
+// ---- MergeAppReposCache ----
 
-func TestMergeProjectCache_addsNewProjects(t *testing.T) {
-	cached := map[string]int{"pfm": 10, "crm": 20}
-	fresh := map[string]int{"pfm": 10, "crm": 20, "hrm": 30} // hrm is new
+func TestMergeAppReposCache_addsNewApp(t *testing.T) {
+	cached := map[string][]RepoInfo{"pfm": {{Name: "pfm-api", ID: 10}}}
+	fresh := map[string][]RepoInfo{
+		"pfm": {{Name: "pfm-api", ID: 10}},
+		"crm": {{Name: "crm-backend", ID: 20}}, // new
+	}
 
-	merged, changed := MergeProjectCache(cached, fresh)
+	merged, changed := MergeAppReposCache(cached, fresh)
 	if !changed {
-		t.Error("expected changed=true when new project added")
+		t.Error("expected changed=true when new app added")
 	}
-	if len(merged) != 3 {
-		t.Errorf("expected 3 entries, got %d", len(merged))
+	if len(merged) != 2 {
+		t.Errorf("expected 2 apps, got %d", len(merged))
 	}
-	if merged["hrm"] != 30 {
-		t.Errorf("hrm: expected ID=30, got %d", merged["hrm"])
+	if len(merged["crm"]) != 1 || merged["crm"][0].ID != 20 {
+		t.Errorf("crm: unexpected repos %v", merged["crm"])
 	}
 }
 
-func TestMergeProjectCache_noChange(t *testing.T) {
-	cached := map[string]int{"pfm": 10, "crm": 20}
-	fresh := map[string]int{"pfm": 10, "crm": 20}
+func TestMergeAppReposCache_addsNewRepoToExistingApp(t *testing.T) {
+	cached := map[string][]RepoInfo{
+		"pfm": {{Name: "pfm-api", ID: 10}},
+	}
+	fresh := map[string][]RepoInfo{
+		"pfm": {{Name: "pfm-api", ID: 10}, {Name: "pfm-service", ID: 11}}, // pfm-service is new
+	}
 
-	_, changed := MergeProjectCache(cached, fresh)
+	merged, changed := MergeAppReposCache(cached, fresh)
+	if !changed {
+		t.Error("expected changed=true when new repo added")
+	}
+	if len(merged["pfm"]) != 2 {
+		t.Errorf("pfm: expected 2 repos, got %d", len(merged["pfm"]))
+	}
+}
+
+func TestMergeAppReposCache_noChange(t *testing.T) {
+	cached := map[string][]RepoInfo{"pfm": {{Name: "pfm-api", ID: 10}}}
+	fresh := map[string][]RepoInfo{"pfm": {{Name: "pfm-api", ID: 10}}}
+
+	_, changed := MergeAppReposCache(cached, fresh)
 	if changed {
 		t.Error("expected changed=false when nothing new")
 	}
 }
 
-// TestMergeProjectCache_neverRemoves verifies option B: a project deleted from the
-// group is retained in the cache to preserve long-term report integrity.
-func TestMergeProjectCache_neverRemoves(t *testing.T) {
-	cached := map[string]int{"pfm": 10, "crm": 20, "legacy": 99}
-	fresh := map[string]int{"pfm": 10, "crm": 20} // "legacy" gone from GitLab
+// TestMergeAppReposCache_neverRemovesApps verifies option B: an app or repo
+// deleted from GitLab is retained in the cache.
+func TestMergeAppReposCache_neverRemovesApps(t *testing.T) {
+	cached := map[string][]RepoInfo{
+		"pfm":    {{Name: "pfm-api", ID: 10}},
+		"legacy": {{Name: "legacy-svc", ID: 99}}, // gone from GitLab
+	}
+	fresh := map[string][]RepoInfo{
+		"pfm": {{Name: "pfm-api", ID: 10}},
+	}
 
-	merged, changed := MergeProjectCache(cached, fresh)
+	merged, changed := MergeAppReposCache(cached, fresh)
 	if changed {
-		t.Error("expected changed=false — removing a project from GitLab is not a cache change")
+		t.Error("expected changed=false — removing an app is not a cache change")
 	}
 	if _, ok := merged["legacy"]; !ok {
-		t.Error("legacy project should be retained in merged cache (option B)")
+		t.Error("legacy app should be retained in cache (option B)")
 	}
-	if len(merged) != 3 {
-		t.Errorf("expected 3 entries (nothing removed), got %d", len(merged))
+	if len(merged) != 2 {
+		t.Errorf("expected 2 apps (nothing removed), got %d", len(merged))
 	}
 }
 
-// TestMergeProjectCache_doesNotMutateInputs verifies that cached and fresh are
-// not modified by the merge operation.
-func TestMergeProjectCache_doesNotMutateInputs(t *testing.T) {
-	cached := map[string]int{"pfm": 10}
-	fresh := map[string]int{"pfm": 10, "crm": 20}
+// TestMergeAppReposCache_doesNotMutateInputs verifies cached and fresh are not
+// modified.
+func TestMergeAppReposCache_doesNotMutateInputs(t *testing.T) {
+	cached := map[string][]RepoInfo{"pfm": {{Name: "pfm-api", ID: 10}}}
+	fresh := map[string][]RepoInfo{
+		"pfm": {{Name: "pfm-api", ID: 10}},
+		"crm": {{Name: "crm-backend", ID: 20}},
+	}
 
-	MergeProjectCache(cached, fresh)
+	MergeAppReposCache(cached, fresh)
 
 	if len(cached) != 1 {
-		t.Errorf("cached was mutated: now has %d entries", len(cached))
+		t.Errorf("cached was mutated: now has %d apps", len(cached))
 	}
 }
 
-// TestMergeProjectCache_bothEmpty verifies merging two empty maps is a no-op.
-func TestMergeProjectCache_bothEmpty(t *testing.T) {
-	merged, changed := MergeProjectCache(map[string]int{}, map[string]int{})
+func TestMergeAppReposCache_bothEmpty(t *testing.T) {
+	merged, changed := MergeAppReposCache(map[string][]RepoInfo{}, map[string][]RepoInfo{})
 	if changed {
 		t.Error("expected changed=false for two empty maps")
 	}
@@ -214,113 +249,128 @@ func TestMergeProjectCache_bothEmpty(t *testing.T) {
 	}
 }
 
-// ---- LoadProjectCache / SaveProjectCache ----
+// ---- LoadAppReposCache / SaveAppReposCache ----
 
-func TestLoadProjectCache_missingFile(t *testing.T) {
-	m := LoadProjectCache("/nonexistent/path/cache.json")
+func TestLoadAppReposCache_missingFile(t *testing.T) {
+	m := LoadAppReposCache("/nonexistent/path/cache.json")
 	if len(m) != 0 {
 		t.Errorf("expected empty map for missing file, got %v", m)
 	}
 }
 
-func TestLoadProjectCache_corruptFile(t *testing.T) {
+func TestLoadAppReposCache_corruptFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "cache.json")
 	os.WriteFile(path, []byte(`{not valid json`), 0o644)
 
-	m := LoadProjectCache(path)
+	m := LoadAppReposCache(path)
 	if len(m) != 0 {
 		t.Errorf("expected empty map for corrupt file, got %v", m)
 	}
 }
 
-func TestSaveAndLoadRoundtrip(t *testing.T) {
+func TestSaveAndLoadAppReposRoundtrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "cache.json")
 
-	projects := map[string]int{"pfm": 10, "crm": 20, "hrm": 30}
-	if err := SaveProjectCache(path, projects); err != nil {
-		t.Fatalf("SaveProjectCache: %v", err)
+	cache := map[string][]RepoInfo{
+		"pfm": {{Name: "pfm-api", ID: 10}, {Name: "pfm-service", ID: 11}},
+		"crm": {{Name: "crm-backend", ID: 20}},
+	}
+	if err := SaveAppReposCache(path, cache); err != nil {
+		t.Fatalf("SaveAppReposCache: %v", err)
 	}
 
-	loaded := LoadProjectCache(path)
-	if len(loaded) != 3 {
-		t.Fatalf("expected 3 entries after roundtrip, got %d", len(loaded))
+	loaded := LoadAppReposCache(path)
+	if len(loaded) != 2 {
+		t.Fatalf("expected 2 apps after roundtrip, got %d", len(loaded))
 	}
-	for name, id := range projects {
-		if loaded[name] != id {
-			t.Errorf("%s: expected %d, got %d", name, id, loaded[name])
-		}
+	if len(loaded["pfm"]) != 2 {
+		t.Errorf("pfm: expected 2 repos, got %d", len(loaded["pfm"]))
+	}
+	if loaded["pfm"][0].ID != 10 {
+		t.Errorf("pfm[0]: expected ID=10, got %d", loaded["pfm"][0].ID)
 	}
 }
 
-func TestSaveProjectCache_writesValidJSON(t *testing.T) {
+func TestSaveAppReposCache_writesValidJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "cache.json")
 
-	if err := SaveProjectCache(path, map[string]int{"pfm": 10}); err != nil {
-		t.Fatalf("SaveProjectCache: %v", err)
+	if err := SaveAppReposCache(path, map[string][]RepoInfo{
+		"pfm": {{Name: "pfm-api", ID: 10}},
+	}); err != nil {
+		t.Fatalf("SaveAppReposCache: %v", err)
 	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("reading file: %v", err)
 	}
-	var m map[string]int
+	var m map[string][]RepoInfo
 	if err := json.Unmarshal(data, &m); err != nil {
 		t.Errorf("written file is not valid JSON: %v", err)
 	}
 }
 
-// TestLoadProjectCache_fullIntegrationWithDiscover verifies that the output of
-// DiscoverGroupProjects can be saved and loaded without loss.
-func TestLoadProjectCache_fullIntegrationWithDiscover(t *testing.T) {
+// TestDiscoverAndCacheIntegration verifies the full discover→merge→save→reload
+// workflow across three simulated runs.
+func TestDiscoverAndCacheIntegration(t *testing.T) {
 	srv := glMux(map[string]http.HandlerFunc{
-		"/api/v4/groups/5/projects": func(w http.ResponseWriter, r *http.Request) {
-			writeJSON(w, []glProject{
+		"/api/v4/groups/5/subgroups": func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, []glSubgroup{
 				{ID: 10, Path: "pfm"},
 				{ID: 20, Path: "crm"},
 			})
+		},
+		"/api/v4/groups/10/projects": func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, []glProject{{ID: 101, Path: "pfm-api"}})
+		},
+		"/api/v4/groups/20/projects": func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, []glProject{{ID: 201, Path: "crm-backend"}})
 		},
 	})
 	defer srv.Close()
 
 	c := newGitLabChecker(srv)
-	fresh, err := c.DiscoverGroupProjects(context.Background(), 5)
-	if err != nil {
-		t.Fatalf("DiscoverGroupProjects: %v", err)
-	}
-
 	dir := t.TempDir()
 	cachePath := filepath.Join(dir, "gitlab-projects-cache.json")
 
-	cached := LoadProjectCache(cachePath) // empty — first run
-	merged, changed := MergeProjectCache(cached, fresh)
+	// First run: cache is empty.
+	cached := LoadAppReposCache(cachePath)
+	fresh, err := c.DiscoverAppRepos(context.Background(), 5)
+	if err != nil {
+		t.Fatalf("DiscoverAppRepos: %v", err)
+	}
+	merged, changed := MergeAppReposCache(cached, fresh)
 	if !changed {
 		t.Error("expected changed=true on first run (cache was empty)")
 	}
-	if err := SaveProjectCache(cachePath, merged); err != nil {
-		t.Fatalf("SaveProjectCache: %v", err)
+	if err := SaveAppReposCache(cachePath, merged); err != nil {
+		t.Fatalf("SaveAppReposCache: %v", err)
 	}
 
 	// Second run: same group, nothing new.
-	reloaded := LoadProjectCache(cachePath)
-	_, changed2 := MergeProjectCache(reloaded, fresh)
+	reloaded := LoadAppReposCache(cachePath)
+	_, changed2 := MergeAppReposCache(reloaded, fresh)
 	if changed2 {
-		t.Error("expected changed=false on second run with same projects")
+		t.Error("expected changed=false on second run with same apps")
 	}
 
-	// Third run: new project appears.
-	freshWithNew := map[string]int{"pfm": 10, "crm": 20, "hrm": 30}
-	merged3, changed3 := MergeProjectCache(reloaded, freshWithNew)
+	// Third run: new repo appears in pfm.
+	freshWithNew := map[string][]RepoInfo{
+		"pfm": {{Name: "pfm-api", ID: 101}, {Name: "pfm-service", ID: 102}},
+		"crm": {{Name: "crm-backend", ID: 201}},
+	}
+	merged3, changed3 := MergeAppReposCache(reloaded, freshWithNew)
 	if !changed3 {
-		t.Error("expected changed=true when new project appears")
+		t.Error("expected changed=true when new repo appears")
 	}
-	if merged3["hrm"] != 30 {
-		t.Errorf("hrm should be in merged cache after new project detected")
+	if len(merged3["pfm"]) != 2 {
+		t.Errorf("pfm: expected 2 repos after new repo added, got %d", len(merged3["pfm"]))
 	}
-	// Legacy project still present even if dropped from group.
-	if len(merged3) != 3 {
-		t.Errorf("expected 3 entries, got %d: %v", len(merged3), merged3)
+	// Legacy app/repo not deleted (option B).
+	if len(merged3) < 2 {
+		t.Errorf("expected at least 2 apps retained, got %d", len(merged3))
 	}
 }

@@ -1,6 +1,9 @@
 {
-  "crm": 456,
-  "fin": 321,
-  "hrm": 789,
-  "pfm": 123
+  "billing": [{"name": "billing",      "id": 888}],
+  "crm":     [{"name": "crm-backend",  "id": 201}, {"name": "crm-frontend", "id": 202}],
+  "fin":     [{"name": "fin",          "id": 321}],
+  "hrm":     [{"name": "hrm",          "id": 789}],
+  "newapp":  [{"name": "newapp",       "id": 999}],
+  "pfm":     [{"name": "pfm-api",      "id": 101}, {"name": "pfm-service",  "id": 102}],
+  "svc":     [{"name": "svc",          "id": 555}]
 }

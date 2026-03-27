@@ -1,14 +1,14 @@
 [
   {
-    "id": "svc-20260325-2300",
-    "appName": "svc",
+    "id": "fin-20260325-2300",
+    "appName": "fin",
     "openedAt": "2026-03-25T23:00:00Z",
     "closedAt": "2026-03-26T10:45:00Z",
     "status": "resolved",
     "durationMinutes": 705,
     "peakLevel": "critical",
     "issues": [
-      "deployer token age 94 days (critical)",
+      "deployer token age 95 days (critical)",
       "last pipeline status: failed"
     ],
     "notes": [
@@ -18,11 +18,7 @@
       },
       {
         "timestamp": "2026-03-26T10:30:00Z",
-        "content": "Root cause: deployer SA token was never rotated after initial provisioning (94 days ago). Fix: rotated token, updated OCP_SVC_KUBECONFIG in GitLab CI variables. Lesson: add a 50-day reminder to the team calendar for all CI tokens."
-      },
-      {
-        "timestamp": "2026-03-26T15:43:39Z",
-        "content": "aaaa"
+        "content": "Root cause: deployer SA token was never rotated after initial provisioning (95 days ago). Fix: rotated token, updated OCP_FIN_KUBECONFIG in GitLab CI variables. Lesson: add a 50-day reminder to the team calendar for all CI tokens."
       }
     ]
   },
@@ -41,10 +37,6 @@
       {
         "timestamp": "2026-03-24T09:00:00Z",
         "content": "Token rotation scheduled for Friday 2026-03-28. No immediate impact on pipelines."
-      },
-      {
-        "timestamp": "2026-03-26T15:38:45Z",
-        "content": "test"
       }
     ]
   },
@@ -72,26 +64,21 @@
     ]
   },
   {
-    "id": "auth-20260326-0615",
-    "appName": "auth",
+    "id": "svc-20260326-0615",
+    "appName": "svc",
     "openedAt": "2026-03-26T06:15:00Z",
     "closedAt": null,
     "status": "open",
     "durationMinutes": null,
     "peakLevel": "error",
     "issues": [
-      "GitLab API error: API /api/v4/projects/89/pipelines returned 503: service unavailable"
+      "GitLab API error: API /api/v4/projects/555/pipelines returned 503: service unavailable"
     ],
-    "notes": [
-      {
-        "timestamp": "2026-03-26T15:39:05Z",
-        "content": "asdfasdf"
-      }
-    ]
+    "notes": []
   },
   {
-    "id": "infra-20260325-1400",
-    "appName": "infra",
+    "id": "hrm-20260325-1400",
+    "appName": "hrm",
     "openedAt": "2026-03-25T14:00:00Z",
     "closedAt": null,
     "status": "open",
@@ -99,12 +86,12 @@
     "peakLevel": "warning",
     "issues": [
       "image-builder SA has no rolebindings",
-      "deployer token secret missing"
+      "deployer SA has no rolebindings"
     ],
     "notes": [
       {
         "timestamp": "2026-03-25T15:30:00Z",
-        "content": "Investigate: infra namespace rolebindings were not created during initial setup. Deployer token secret also missing — likely setup was incomplete."
+        "content": "Rolebindings were not applied during initial namespace setup for hrm-sit and hrm-uat. Raised with platform team to apply ci-image-builder and ci-deployer bindings."
       }
     ]
   },
