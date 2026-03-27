@@ -16,10 +16,20 @@ import (
 
 // Config is the top-level monitoring configuration.
 type Config struct {
-	Thresholds    Thresholds `yaml:"thresholds"`
-	Alerting      Alerting   `yaml:"alerting"`
-	GitLabBaseURL string     `yaml:"gitlabBaseURL"`
-	GitLabGroupID int        `yaml:"gitlabGroupID"` // numeric group or sub-group ID to auto-discover projects from
+	Thresholds    Thresholds  `yaml:"thresholds"`
+	Alerting      Alerting    `yaml:"alerting"`
+	GitLabBaseURL string      `yaml:"gitlabBaseURL"`
+	Apps          []AppConfig `yaml:"apps"`
+}
+
+// AppConfig declares a single application to monitor.
+// Name drives OCP resource discovery by naming convention
+// (e.g. "pfm" → looks for pfm-image-builder SA, pfm-* namespaces).
+// GitLabGroupID is the numeric ID of the app's GitLab sub-group;
+// projects within that group are auto-discovered as repos.
+type AppConfig struct {
+	Name          string `yaml:"name"`
+	GitLabGroupID int    `yaml:"gitlabGroupID"`
 }
 
 // Thresholds defines the health-check boundaries.
@@ -37,13 +47,6 @@ type Alerting struct {
 	SMTPPort           int      `yaml:"smtpPort"`
 	SenderAddress      string   `yaml:"senderAddress"`
 	RecipientAddresses []string `yaml:"recipientAddresses"`
-}
-
-// App pairs an application name with its GitLab project ID.
-// Populated at runtime from group discovery — not parsed from the config YAML.
-type App struct {
-	Name            string
-	GitLabProjectID int
 }
 
 // Duration wraps time.Duration for YAML unmarshalling from strings like "24h".
@@ -114,8 +117,17 @@ func applyDefaults(cfg *Config) {
 func validate(cfg *Config) error {
 	var errs []error
 
-	if cfg.GitLabBaseURL == "" {
-		errs = append(errs, errors.New("gitlabBaseURL is required"))
+	if len(cfg.Apps) > 0 && cfg.GitLabBaseURL == "" {
+		errs = append(errs, errors.New("gitlabBaseURL is required when apps are configured"))
+	}
+
+	for i, app := range cfg.Apps {
+		if app.Name == "" {
+			errs = append(errs, fmt.Errorf("apps[%d]: name is required", i))
+		}
+		if app.GitLabGroupID <= 0 {
+			errs = append(errs, fmt.Errorf("apps[%d] (%s): gitlabGroupID must be a positive integer", i, app.Name))
+		}
 	}
 
 	if cfg.Thresholds.TokenAgeWarningDays >= cfg.Thresholds.TokenAgeCriticalDays {

@@ -23,7 +23,12 @@ alerting:
     - "ops@example.com"
 
 gitlabBaseURL: "https://gitlab.example.com"
-gitlabGroupID: 42
+
+apps:
+  - name: pfm
+    gitlabGroupID: 10
+  - name: crm
+    gitlabGroupID: 20
 `
 
 func TestParse_ValidConfig(t *testing.T) {
@@ -58,16 +63,24 @@ func TestParse_ValidConfig(t *testing.T) {
 	if cfg.GitLabBaseURL != "https://gitlab.example.com" {
 		t.Errorf("GitLabBaseURL = %q, want https://gitlab.example.com", cfg.GitLabBaseURL)
 	}
-	if cfg.GitLabGroupID != 42 {
-		t.Errorf("GitLabGroupID = %d, want 42", cfg.GitLabGroupID)
+
+	// Apps
+	if len(cfg.Apps) != 2 {
+		t.Fatalf("len(Apps) = %d, want 2", len(cfg.Apps))
+	}
+	if cfg.Apps[0].Name != "pfm" || cfg.Apps[0].GitLabGroupID != 10 {
+		t.Errorf("Apps[0] = %+v, want {pfm 10}", cfg.Apps[0])
+	}
+	if cfg.Apps[1].Name != "crm" || cfg.Apps[1].GitLabGroupID != 20 {
+		t.Errorf("Apps[1] = %+v, want {crm 20}", cfg.Apps[1])
 	}
 }
 
 func TestParse_Defaults(t *testing.T) {
-	// Minimal config — only required fields, everything else should get defaults.
+	// Minimal config — no apps, no GitLab URL needed, everything else gets defaults.
 	minimal := `
-gitlabBaseURL: "https://gitlab.example.com"
-gitlabGroupID: 10
+thresholds:
+  tokenAgeWarningDays: 0
 `
 	cfg, err := Parse([]byte(minimal))
 	if err != nil {
@@ -94,23 +107,88 @@ gitlabGroupID: 10
 	}
 }
 
+// TestParse_NoAppsOCPOnly verifies that an empty apps list is valid (OCP-only mode).
+func TestParse_NoAppsOCPOnly(t *testing.T) {
+	input := `
+apps: []
+`
+	cfg, err := Parse([]byte(input))
+	if err != nil {
+		t.Fatalf("unexpected error for empty apps list: %v", err)
+	}
+	if len(cfg.Apps) != 0 {
+		t.Errorf("expected empty apps, got %d", len(cfg.Apps))
+	}
+}
+
+// TestParse_NoAppsNoGitLabURL verifies that gitlabBaseURL is not required when no apps are configured.
+func TestParse_NoAppsNoGitLabURL(t *testing.T) {
+	_, err := Parse([]byte(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error with no apps and no gitlabBaseURL: %v", err)
+	}
+}
+
 func TestParse_MissingGitLabBaseURL(t *testing.T) {
 	input := `
-gitlabGroupID: 10
+apps:
+  - name: pfm
+    gitlabGroupID: 10
 `
 	_, err := Parse([]byte(input))
 	if err == nil {
-		t.Fatal("expected error for missing gitlabBaseURL")
+		t.Fatal("expected error for missing gitlabBaseURL when apps are configured")
 	}
 	if !strings.Contains(err.Error(), "gitlabBaseURL is required") {
 		t.Errorf("error = %q, want it to mention gitlabBaseURL", err)
 	}
 }
 
-func TestParse_WarningGTECritical(t *testing.T) {
+func TestParse_AppMissingName(t *testing.T) {
 	input := `
 gitlabBaseURL: "https://gitlab.example.com"
-gitlabGroupID: 10
+apps:
+  - gitlabGroupID: 10
+`
+	_, err := Parse([]byte(input))
+	if err == nil {
+		t.Fatal("expected error for app with no name")
+	}
+	if !strings.Contains(err.Error(), "name is required") {
+		t.Errorf("error = %q, want name error", err)
+	}
+}
+
+func TestParse_AppMissingGroupID(t *testing.T) {
+	input := `
+gitlabBaseURL: "https://gitlab.example.com"
+apps:
+  - name: pfm
+`
+	_, err := Parse([]byte(input))
+	if err == nil {
+		t.Fatal("expected error for app with no gitlabGroupID")
+	}
+	if !strings.Contains(err.Error(), "gitlabGroupID must be a positive integer") {
+		t.Errorf("error = %q, want groupID error", err)
+	}
+}
+
+func TestParse_AppGroupIDZero(t *testing.T) {
+	input := `
+gitlabBaseURL: "https://gitlab.example.com"
+apps:
+  - name: pfm
+    gitlabGroupID: 0
+`
+	_, err := Parse([]byte(input))
+	if err == nil {
+		t.Fatal("expected error for gitlabGroupID=0")
+	}
+}
+
+func TestParse_WarningGTECritical(t *testing.T) {
+	input := `
 thresholds:
   tokenAgeWarningDays: 90
   tokenAgeCriticalDays: 90
@@ -126,8 +204,6 @@ thresholds:
 
 func TestParse_EmailEnabledMissingFields(t *testing.T) {
 	input := `
-gitlabBaseURL: "https://gitlab.example.com"
-gitlabGroupID: 10
 alerting:
   enableEmail: true
 `
@@ -149,8 +225,6 @@ alerting:
 
 func TestParse_EmailDisabledNoSMTPValidation(t *testing.T) {
 	input := `
-gitlabBaseURL: "https://gitlab.example.com"
-gitlabGroupID: 10
 alerting:
   enableEmail: false
 `
@@ -162,8 +236,6 @@ alerting:
 
 func TestParse_InvalidDuration(t *testing.T) {
 	input := `
-gitlabBaseURL: "https://gitlab.example.com"
-gitlabGroupID: 10
 thresholds:
   pipelineFailureWindow: "not-a-duration"
 `
@@ -180,20 +252,5 @@ func TestParse_InvalidYAML(t *testing.T) {
 	_, err := Parse([]byte(`{{{not yaml`))
 	if err == nil {
 		t.Fatal("expected error for invalid YAML")
-	}
-}
-
-// TestParse_GroupIDZero verifies that gitlabGroupID=0 (omitted) is accepted —
-// the monitor can run OCP-only with no GitLab group configured.
-func TestParse_GroupIDZero(t *testing.T) {
-	input := `
-gitlabBaseURL: "https://gitlab.example.com"
-`
-	cfg, err := Parse([]byte(input))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if cfg.GitLabGroupID != 0 {
-		t.Errorf("GitLabGroupID = %d, want 0", cfg.GitLabGroupID)
 	}
 }

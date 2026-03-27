@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -122,19 +123,19 @@ func (c *GitLabChecker) checkRepo(ctx context.Context, repo RepoInfo, now time.T
 	if pipeline != nil {
 		jobs, err := c.getLastPipelineJobs(ctx, repo.ID, pipeline.ID)
 		if err != nil {
-			rs.Error = err.Error()
-			return rs
+			log.Printf("WARNING: jobs fetch for repo %d pipeline %d: %v", repo.ID, pipeline.ID, err)
+		} else {
+			rs.LastPipelineJobs = jobs
 		}
-		rs.LastPipelineJobs = jobs
 	}
 
 	since := now.Add(-c.FailureWindow)
 	failedByStage, err := c.getFailedJobsByStage(ctx, repo.ID, since)
 	if err != nil {
-		rs.Error = err.Error()
-		return rs
+		log.Printf("WARNING: failed jobs fetch for repo %d: %v", repo.ID, err)
+	} else {
+		rs.FailedJobsByStage = failedByStage
 	}
-	rs.FailedJobsByStage = failedByStage
 
 	return rs
 }
@@ -175,11 +176,6 @@ type glRunner struct {
 type glProject struct {
 	ID   int    `json:"id"`
 	Path string `json:"path"` // slug only (e.g. "pfm"), not the full namespace path
-}
-
-type glSubgroup struct {
-	ID   int    `json:"id"`
-	Path string `json:"path"` // slug, becomes the app name
 }
 
 // ---- API call helpers ----
@@ -294,87 +290,32 @@ func (c *GitLabChecker) getRunners(ctx context.Context, projectID int, now time.
 	return result, nil
 }
 
-// ---- Sub-group / project discovery ----
+// ---- Project discovery ----
 
-// DiscoverAppRepos fetches sub-groups of the root group (one per app) and the
-// projects within each sub-group (one per repo). It returns a map of
-// appName → []RepoInfo for building or refreshing the project cache.
-func (c *GitLabChecker) DiscoverAppRepos(ctx context.Context, groupID int) (map[string][]RepoInfo, error) {
-	var subgroups []glSubgroup
+// GetAppRepos fetches all projects within an app's GitLab sub-group (one page
+// at a time) and returns them as a slice of RepoInfo. The caller is responsible
+// for merging results with the on-disk cache.
+func (c *GitLabChecker) GetAppRepos(ctx context.Context, groupID int) ([]RepoInfo, error) {
+	var repos []RepoInfo
 	for page := 1; ; {
-		batch, nextPage, err := c.getSubgroupsPage(ctx, groupID, page)
+		batch, nextPage, err := c.getGroupProjectsPage(ctx, groupID, page)
 		if err != nil {
 			return nil, err
 		}
-		subgroups = append(subgroups, batch...)
+		for _, p := range batch {
+			repos = append(repos, RepoInfo{Name: p.Path, ID: p.ID})
+		}
 		if nextPage == 0 {
 			break
 		}
 		page = nextPage
 	}
-
-	result := make(map[string][]RepoInfo, len(subgroups))
-	for _, sg := range subgroups {
-		var projects []glProject
-		for page := 1; ; {
-			batch, nextPage, err := c.getGroupProjectsPage(ctx, sg.ID, page)
-			if err != nil {
-				return nil, fmt.Errorf("listing projects for sub-group %q: %w", sg.Path, err)
-			}
-			projects = append(projects, batch...)
-			if nextPage == 0 {
-				break
-			}
-			page = nextPage
-		}
-		repos := make([]RepoInfo, 0, len(projects))
-		for _, p := range projects {
-			repos = append(repos, RepoInfo{Name: p.Path, ID: p.ID})
-		}
-		result[sg.Path] = repos
-	}
-	return result, nil
-}
-
-// getSubgroupsPage fetches one page of sub-groups from a group.
-func (c *GitLabChecker) getSubgroupsPage(ctx context.Context, groupID, page int) ([]glSubgroup, int, error) {
-	rawURL := fmt.Sprintf("%s/api/v4/groups/%d/subgroups?per_page=100&page=%d",
-		c.BaseURL, groupID, page)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return nil, 0, fmt.Errorf("creating request: %w", err)
-	}
-	req.Header.Set("PRIVATE-TOKEN", c.Token)
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := c.Client.Do(req)
-	if err != nil {
-		return nil, 0, fmt.Errorf("fetching subgroups for group %d: %w", groupID, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, 0, fmt.Errorf("API groups/%d/subgroups returned %d: %s", groupID, resp.StatusCode, string(body))
-	}
-
-	var sgs []glSubgroup
-	if err := json.NewDecoder(resp.Body).Decode(&sgs); err != nil {
-		return nil, 0, fmt.Errorf("decoding subgroups response: %w", err)
-	}
-
-	nextPage := 0
-	if next := resp.Header.Get("X-Next-Page"); next != "" {
-		nextPage, _ = strconv.Atoi(next)
-	}
-
-	return sgs, nextPage, nil
+	return repos, nil
 }
 
 // getGroupProjectsPage fetches one page of projects directly in a group (not recursive).
 func (c *GitLabChecker) getGroupProjectsPage(ctx context.Context, groupID, page int) ([]glProject, int, error) {
-	rawURL := fmt.Sprintf("%s/api/v4/groups/%d/projects?per_page=100&page=%d",
+	rawURL := fmt.Sprintf("%s/api/v4/groups/%d/projects?per_page=100&page=%d&include_subgroups=true",
 		c.BaseURL, groupID, page)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)

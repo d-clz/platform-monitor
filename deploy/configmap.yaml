@@ -19,4 +19,16 @@ data:
       recipientAddresses: []
 
     gitlabBaseURL: "https://gitlab.example.com"
-    gitlabGroupID: 0  # set to your GitLab group numeric ID to enable auto-discovery
+
+    # Each entry declares one application to monitor.
+    # name        — used to match OCP service accounts and namespaces by naming convention
+    #               (e.g. "pfm" → looks for pfm-image-builder SA, pfm-* namespaces)
+    # gitlabGroupID — numeric ID of the app's GitLab sub-group;
+    #                 repos (projects) within that group are auto-discovered
+    apps:
+      - name: pfm
+        gitlabGroupID: 10
+      - name: crm
+        gitlabGroupID: 20
+      - name: fin
+        gitlabGroupID: 30
