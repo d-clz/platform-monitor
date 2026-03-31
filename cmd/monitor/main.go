@@ -13,6 +13,8 @@
 //	CONFIG_PATH       path to config YAML          (default /etc/ci-monitor/config.yaml)
 //	KUBE_API_URL      kube API base URL             (default https://kubernetes.default.svc)
 //	KUBE_TOKEN_PATH   path to SA bearer token       (default /var/run/secrets/kubernetes.io/serviceaccount/token)
+//	KUBE_NAMESPACE    SA home namespace              (default platform-cicd)
+//	OCP_SKIP_TLS      skip TLS verification          (default false, set "true" for self-signed certs)
 //	GITLAB_TOKEN      GitLab Personal Access Token  (required)
 //	SMTP_USERNAME     SMTP auth username             (optional)
 //	SMTP_PASSWORD     SMTP auth password             (optional)
@@ -52,6 +54,7 @@ func run() error {
 
 	kubeAPIURL := envOr("KUBE_API_URL", "https://kubernetes.default.svc")
 	kubeTokenPath := envOr("KUBE_TOKEN_PATH", "/var/run/secrets/kubernetes.io/serviceaccount/token")
+	kubeNamespace := envOr("KUBE_NAMESPACE", "platform-cicd")
 	gitlabToken := os.Getenv("GITLAB_TOKEN")
 	smtpUsername := os.Getenv("SMTP_USERNAME")
 	smtpPassword := os.Getenv("SMTP_PASSWORD")
@@ -69,15 +72,10 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-
 	// ---- OCP check ----
-	ocpChecker := &checker.OCPChecker{
-		Client:    httpClient,
-		BaseURL:   kubeAPIURL,
-		Token:     kubeToken,
-		Namespace: "platform-cicd",
-	}
+	// NewOCPChecker wires TLS config from OCP_SKIP_TLS env var.
+	// Set OCP_SKIP_TLS="true" in your ConfigMap for clusters with self-signed certs.
+	ocpChecker := checker.NewOCPChecker(kubeAPIURL, kubeToken, kubeNamespace)
 	ocpStatuses, err := ocpChecker.Check(ctx)
 	if err != nil {
 		// Non-fatal: log and continue with empty OCP data so GitLab checks still run.
@@ -87,6 +85,9 @@ func run() error {
 	log.Printf("OCP check complete: %d app(s) discovered", len(ocpStatuses))
 
 	// ---- GitLab project discovery ----
+	// GitLab uses its own plain HTTP client — TLS skip is OCP-specific.
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+
 	glChecker := &checker.GitLabChecker{
 		Client:             httpClient,
 		BaseURL:            cfg.GitLabBaseURL,
