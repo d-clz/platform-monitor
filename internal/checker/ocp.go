@@ -3,10 +3,13 @@ package checker
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"sort"
 	"strings"
 	"time"
 )
@@ -57,6 +60,8 @@ const (
 	suffixDeployToken  = "-deployer-token"
 
 	saAnnotationKey = "kubernetes.io/service-account.name"
+
+	defaultHTTPTimeout = 30 * time.Second
 )
 
 // OCPChecker discovers and checks OCP resources for CI service accounts.
@@ -68,6 +73,32 @@ type OCPChecker struct {
 
 	// Now returns the current time. Defaults to time.Now if nil.
 	Now func() time.Time
+}
+
+// NewOCPChecker constructs an OCPChecker with a pre-configured HTTP client.
+// TLS verification is controlled by the OCP_SKIP_TLS environment variable:
+// set it to "true" in a ConfigMap env entry for clusters with self-signed certs.
+//
+//	# ConfigMap
+//	data:
+//	  OCP_SKIP_TLS: "true"
+func NewOCPChecker(baseURL, token, namespace string) *OCPChecker {
+	skipTLS := os.Getenv("OCP_SKIP_TLS") == "true"
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{
+		InsecureSkipVerify: skipTLS, //nolint:gosec // intentional, controlled via OCP_SKIP_TLS env var
+	}
+
+	return &OCPChecker{
+		Client: &http.Client{
+			Transport: transport,
+			Timeout:   defaultHTTPTimeout,
+		},
+		BaseURL:   baseURL,
+		Token:     token,
+		Namespace: namespace,
+	}
 }
 
 // Check performs a full discovery and health check of all CI service accounts.
@@ -238,12 +269,6 @@ func getOrCreate(m map[string]*appEntry, key string) *appEntry {
 	return e
 }
 
-// tokenKey is "appName:role" where role is "image-builder" or "deployer".
-type tokenKey struct {
-	appName string
-	role    string
-}
-
 // buildTokenMap maps each SA name to its token status using the secret annotation.
 func buildTokenMap(secrets []kubeSecret, now time.Time) map[string]TokenStatus {
 	result := make(map[string]TokenStatus)
@@ -253,8 +278,9 @@ func buildTokenMap(secrets []kubeSecret, now time.Time) map[string]TokenStatus {
 		if !ok {
 			continue
 		}
-		// Only consider secrets that look like our CI tokens.
-		if !strings.HasSuffix(s.Metadata.Name, "-token") {
+		// Only consider secrets that match our CI token naming convention.
+		secretName := s.Metadata.Name
+		if !strings.HasSuffix(secretName, suffixIBToken) && !strings.HasSuffix(secretName, suffixDeployToken) {
 			continue
 		}
 
@@ -356,6 +382,11 @@ func assembleResults(apps map[string]*appEntry, tokens map[string]TokenStatus, b
 
 		results = append(results, status)
 	}
+
+	// Sort for deterministic output — map iteration order is not guaranteed.
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Name < results[j].Name
+	})
 
 	return results
 }
