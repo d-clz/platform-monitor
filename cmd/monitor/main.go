@@ -12,6 +12,7 @@
 //
 //	CONFIG_PATH       path to config YAML          (default /etc/ci-monitor/config.yaml)
 //	KUBE_API_URL      kube API base URL             (default https://kubernetes.default.svc)
+//	OCP_TOKEN         bearer token for OCP API      (takes priority over KUBE_TOKEN_PATH)
 //	KUBE_TOKEN_PATH   path to SA bearer token       (default /var/run/secrets/kubernetes.io/serviceaccount/token)
 //	KUBE_NAMESPACE    SA home namespace              (default platform-cicd)
 //	OCP_SKIP_TLS      skip TLS verification          (default false, set "true" for self-signed certs)
@@ -53,7 +54,6 @@ func run() error {
 	}
 
 	kubeAPIURL := envOr("KUBE_API_URL", "https://kubernetes.default.svc")
-	kubeTokenPath := envOr("KUBE_TOKEN_PATH", "/var/run/secrets/kubernetes.io/serviceaccount/token")
 	kubeNamespace := envOr("KUBE_NAMESPACE", "platform-cicd")
 	gitlabToken := os.Getenv("GITLAB_TOKEN")
 	smtpUsername := os.Getenv("SMTP_USERNAME")
@@ -64,9 +64,10 @@ func run() error {
 		return fmt.Errorf("GITLAB_TOKEN environment variable is required")
 	}
 
-	kubeToken, err := readFile(kubeTokenPath)
+	// OCP_TOKEN takes priority; falls back to reading from KUBE_TOKEN_PATH.
+	kubeToken, err := resolveKubeToken()
 	if err != nil {
-		return fmt.Errorf("reading kube token: %w", err)
+		return fmt.Errorf("resolving kube token: %w", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -167,6 +168,27 @@ func run() error {
 	}
 
 	return nil
+}
+
+// resolveKubeToken returns the OCP bearer token.
+// OCP_TOKEN env var takes priority; falls back to reading from KUBE_TOKEN_PATH.
+func resolveKubeToken() (string, error) {
+	if token := os.Getenv("OCP_TOKEN"); token != "" {
+		log.Printf("using OCP token from OCP_TOKEN env var")
+		return token, nil
+	}
+
+	tokenPath := envOr("KUBE_TOKEN_PATH", "/var/run/secrets/kubernetes.io/serviceaccount/token")
+	log.Printf("OCP_TOKEN not set, reading token from %s", tokenPath)
+
+	token, err := readFile(tokenPath)
+	if err != nil {
+		return "", fmt.Errorf("reading token from %s: %w", tokenPath, err)
+	}
+	if token == "" {
+		return "", fmt.Errorf("token file %s is empty", tokenPath)
+	}
+	return token, nil
 }
 
 // envOr returns the value of the named environment variable, or fallback if unset.
